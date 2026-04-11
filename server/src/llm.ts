@@ -1,0 +1,231 @@
+import OpenAI from "openai";
+import type { GraphEdge, GraphNode, MindGraph } from "./graphTypes.js";
+
+const EXPAND_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown):
+{
+  "title": "short session title",
+  "nodes": [
+    { "id": "stable_snake_id", "kind": "topic"|"keyword"|"subtask", "label": "...", "summary": "one sentence" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "parent_id", "target": "child_id", "kind": "expands_to"|"prerequisite_for"|"user_linked" }
+  ]
+}
+Rules:
+- Exactly one node with kind "topic" as the root concept for the user's question.
+- 10–18 additional nodes: mix keyword and subtask; labels under 6 words when possible.
+- Edges must connect the topic to major branches and show dependencies where useful.
+- Use ASCII ids like fl_privacy, secure_aggregation.`;
+
+const DEEP_SYSTEM = `You are a careful tutor. Answer clearly in Markdown. If uncertain, say so. Do not invent paper titles.`;
+
+function mockExpand(question: string): MindGraph {
+  const rootId = "root_topic";
+  const nodes: GraphNode[] = [
+    {
+      id: rootId,
+      kind: "topic",
+      label: question.slice(0, 80) || "Topic",
+      summary: "Exploration root (offline mock — set OPENAI_API_KEY for live expansion).",
+    },
+    {
+      id: "kw_related",
+      kind: "keyword",
+      label: "Related concepts",
+      summary: "Pick nodes to branch deeper.",
+    },
+    {
+      id: "st_breakdown",
+      kind: "subtask",
+      label: "Break into steps",
+      summary: "Define data, model, evaluation, deployment.",
+    },
+    {
+      id: "kw_sources",
+      kind: "keyword",
+      label: "Literature",
+      summary: "Use OpenAlex search from the side panel.",
+    },
+  ];
+  const edges: GraphEdge[] = [
+    { id: "e1", source: rootId, target: "kw_related", kind: "expands_to" },
+    { id: "e2", source: rootId, target: "st_breakdown", kind: "expands_to" },
+    { id: "e3", source: rootId, target: "kw_sources", kind: "expands_to" },
+  ];
+  return {
+    version: 1,
+    title: "Mock graph",
+    nodes,
+    edges,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function parseMindGraph(raw: string): MindGraph {
+  const data = JSON.parse(raw) as {
+    title?: string;
+    nodes?: GraphNode[];
+    edges?: GraphEdge[];
+  };
+  if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+    throw new Error("Invalid graph JSON from model");
+  }
+  return {
+    version: 1,
+    title: data.title ?? "Untitled",
+    nodes: data.nodes,
+    edges: data.edges,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function expandQuestionToGraph(
+  apiKey: string | undefined,
+  question: string,
+  model: string,
+): Promise<MindGraph> {
+  if (!apiKey) return mockExpand(question);
+
+  const client = new OpenAI({ apiKey });
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.4,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You expand user questions into a concise knowledge graph for UI rendering. " +
+          EXPAND_SCHEMA_HINT,
+      },
+      { role: "user", content: question },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error("Empty LLM response");
+  return parseMindGraph(text);
+}
+
+const DELTA_HINT = `Return ONLY valid JSON:
+{
+  "new_nodes": [
+    { "id": "unique_id", "kind": "keyword"|"subtask", "label": "...", "summary": "one sentence" }
+  ],
+  "new_edges": [
+    { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for"|"user_linked" }
+  ]
+}
+Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.`;
+
+function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
+  const data = JSON.parse(raw) as {
+    new_nodes?: GraphNode[];
+    new_edges?: GraphEdge[];
+  };
+  return {
+    new_nodes: Array.isArray(data.new_nodes) ? data.new_nodes : [],
+    new_edges: Array.isArray(data.new_edges) ? data.new_edges : [],
+  };
+}
+
+export function mergeDelta(
+  base: MindGraph,
+  delta: { new_nodes: GraphNode[]; new_edges: GraphEdge[] },
+): MindGraph {
+  const ids = new Set(base.nodes.map((n) => n.id));
+  const nodes = [...base.nodes];
+  for (const n of delta.new_nodes) {
+    if (!ids.has(n.id)) {
+      ids.add(n.id);
+      nodes.push(n);
+    }
+  }
+  const eids = new Set(base.edges.map((e) => e.id));
+  const edges = [...base.edges];
+  for (const e of delta.new_edges) {
+    if (!eids.has(e.id)) {
+      eids.add(e.id);
+      edges.push(e);
+    }
+  }
+  return { ...base, nodes, edges, updatedAt: new Date().toISOString() };
+}
+
+export async function expandFromSelection(
+  apiKey: string | undefined,
+  question: string,
+  selected: { id: string; label: string; kind: string }[],
+  base: MindGraph,
+  model: string,
+): Promise<MindGraph> {
+  if (!apiKey) {
+    const extra: GraphNode[] = selected.map((s, i) => ({
+      id: `sel_${s.id.replace(/[^a-zA-Z0-9_]/g, "_")}_${i}`,
+      kind: "keyword" as const,
+      label: `Dive: ${s.label}`,
+      summary: "Mock child from selection.",
+    }));
+    const edges: GraphEdge[] = selected.map((s, i) => ({
+      id: `me_${s.id}_${i}`,
+      source: s.id,
+      target: extra[i]!.id,
+      kind: "expands_to" as const,
+    }));
+    return mergeDelta(base, { new_nodes: extra, new_edges: edges });
+  }
+
+  const client = new OpenAI({ apiKey });
+  const payload = JSON.stringify({
+    originalQuestion: question,
+    selected,
+    existingNodeIds: base.nodes.map((n) => n.id),
+  });
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.35,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "Given the user's question and SELECTED nodes from their graph, add focused child nodes. " +
+          DELTA_HINT,
+      },
+      { role: "user", content: payload },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error("Empty LLM response");
+  const delta = parseDelta(text);
+  return mergeDelta(base, delta);
+}
+
+export async function deepAnswer(
+  apiKey: string | undefined,
+  question: string,
+  selected: { id: string; label: string; summary?: string }[],
+  model: string,
+): Promise<string> {
+  const ctx = selected.map((s) => `- ${s.label}: ${s.summary ?? ""}`).join("\n");
+  const user = `Original question:\n${question}\n\nSelected focus:\n${ctx}\n\nGive a structured deep answer.`;
+
+  if (!apiKey) {
+    return (
+      `## Offline mode\n\n` +
+      `Set **OPENAI_API_KEY** on the server for live answers.\n\n` +
+      `### Focus\n${ctx || "(none)"}\n\n` +
+      `### Sketch\n- Define terms\n- Compare approaches\n- Note risks & evaluation\n`
+    );
+  }
+
+  const client = new OpenAI({ apiKey });
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.5,
+    messages: [
+      { role: "system", content: DEEP_SYSTEM },
+      { role: "user", content: user },
+    ],
+  });
+  return completion.choices[0]?.message?.content ?? "";
+}

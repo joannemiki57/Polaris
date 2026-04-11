@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+server/.env
+*.pem
+
+# API / tool caches
+.cache/
+**/.cache/
+server/.cache/
+
+# Logs and debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE (keep team-shared .vscode if you add one later)
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+# Vite
+client/dist/
+
+# Cursor MCP (local secrets; example file is tracked)
+.cursor/mcp.json
+
+# Obsidian (optional: reduce noisy machine-specific UI state)
+Cursor Hack/.obsidian/workspace.json

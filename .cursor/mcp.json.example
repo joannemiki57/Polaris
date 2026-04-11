@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "obsidian-local-rest-example": {
+      "command": "npx",
+      "args": ["-y", "REPLACE_WITH_PACKAGE_FROM_MCP_DIRECTORY"],
+      "env": {
+        "OBSIDIAN_API_KEY": "paste-from-obsidian-local-rest-api-plugin",
+        "OBSIDIAN_HOST": "127.0.0.1",
+        "OBSIDIAN_PORT": "27124"
+      }
+    }
+  }
+}
