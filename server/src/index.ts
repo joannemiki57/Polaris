@@ -5,15 +5,27 @@ import dotenv from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import type { GraphEdge, MindGraph } from "./graphTypes.js";
+import type { PaperWithKeywords } from "./llm.js";
 import {
   chatWithPapers,
   deepAnswer,
   expandFromSelection,
   expandQuestionToGraph,
+  extractPaperSectionKeywords,
+  mergeDelta,
+  organizeKeywordsToGraph,
   type ChatMessage,
 } from "./llm.js";
-import { searchResearchPapers, searchWorks, workHitToPaperNodes } from "./openalex.js";
+import {
+  fetchWorkDetail,
+  fetchWorkKeywords,
+  keywordsToGraphNodes,
+  searchResearchPapers,
+  searchWorks,
+  workHitToPaperNodes,
+} from "./openalex.js";
 import type { OpenAlexWorkDetailed } from "./openalex.js";
+import { fetchPaperSections, sectionsToGraphNodes } from "./semanticScholar.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "../.env") });
@@ -24,6 +36,7 @@ const PORT = Number(process.env.PORT) || 8787;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
+const S2_API_KEY = process.env.S2_API_KEY;
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
@@ -71,7 +84,57 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const graph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
+
+    // Hybrid pipeline: fetch real papers, then let LLM organize their topics+abstracts
+    const [reviews, articles] = await Promise.all([
+      searchWorks(question, OPENALEX_MAILTO, 3, "review"),
+      searchWorks(question, OPENALEX_MAILTO, 3, "article"),
+    ]);
+    const allHits = [...reviews, ...articles];
+
+    // Fetch topics + abstracts for each paper in parallel
+    const papersWithKeywords: PaperWithKeywords[] = await Promise.all(
+      allHits.map(async (h) => {
+        const detail = await fetchWorkDetail(h.id, OPENALEX_MAILTO);
+        return {
+          id: h.id,
+          title: h.title ?? "Untitled",
+          isReview: h.type === "review",
+          citedByCount: h.cited_by_count ?? 0,
+          topics: detail.topics.map((t) => ({
+            displayName: t.displayName, score: t.score, subfield: t.subfield,
+          })),
+          abstract: detail.abstract,
+        };
+      }),
+    );
+
+    // LLM organizes topics + abstracts into a tree (or fallback to pure LLM if no key)
+    let keywordGraph: MindGraph;
+    if (GEMINI_KEY && papersWithKeywords.some((p) => p.topics.length > 0 || p.abstract)) {
+      keywordGraph = await organizeKeywordsToGraph(
+        GEMINI_KEY, question, papersWithKeywords, GEMINI_MODEL,
+      );
+    } else {
+      keywordGraph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
+    }
+
+    // Build paper nodes and attach them to the root topic
+    const rootNode = keywordGraph.nodes.find((n) => n.kind === "topic");
+    const rootId = rootNode?.id ?? keywordGraph.nodes[0]?.id ?? "root";
+    const { nodes: paperNodes, edgeTargets } = workHitToPaperNodes(allHits, rootId);
+    for (const pn of paperNodes) {
+      const hit = allHits.find((h) => h.id === pn.openAlexId);
+      if (hit?.type === "review") pn.isReview = true;
+    }
+    const paperEdges: GraphEdge[] = edgeTargets.map((t, i) => ({
+      id: `init_${t.paperId}_${i}`,
+      source: t.sourceId,
+      target: t.paperId,
+      kind: "from_openalex",
+    }));
+
+    const graph = mergeDelta(keywordGraph, { new_nodes: paperNodes, new_edges: paperEdges });
     res.json({ graph });
   } catch (e) {
     console.error(e);
@@ -203,7 +266,114 @@ app.get("/api/openalex/works", strictLimiter, async (req, res) => {
   }
 });
 
-/** Merge paper nodes + edges into an existing graph client-side; server can also return merged graph */
+app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
+  try {
+    const base = req.body?.graph as MindGraph | undefined;
+    const paperNodeId = String(req.body?.paperNodeId ?? "").trim();
+    if (!base || !Array.isArray(base.nodes)) {
+      res.status(400).json({ error: "graph with nodes required" });
+      return;
+    }
+    if (!paperNodeId) {
+      res.status(400).json({ error: "paperNodeId required" });
+      return;
+    }
+    const paperNode = base.nodes.find((n) => n.id === paperNodeId);
+    if (!paperNode?.openAlexId) {
+      res.status(400).json({ error: "paper node not found or missing openAlexId" });
+      return;
+    }
+
+    const detail = await fetchWorkDetail(paperNode.openAlexId, OPENALEX_MAILTO);
+
+    // LLM path: extract section-level keywords from topics + abstract
+    if (GEMINI_KEY && (detail.topics.length > 0 || detail.abstract)) {
+      const sectionKws = await extractPaperSectionKeywords(
+        GEMINI_KEY,
+        {
+          title: paperNode.label,
+          topics: detail.topics.map((t) => ({
+            displayName: t.displayName,
+            score: t.score,
+            subfield: t.subfield,
+          })),
+          abstract: detail.abstract,
+        },
+        GEMINI_MODEL,
+      );
+      if (sectionKws.length > 0) {
+        const existingIds = new Set(base.nodes.map((n) => n.id));
+        const newNodes = sectionKws
+          .filter((kw) => !existingIds.has(kw.id))
+          .map((kw) => ({
+            id: kw.id,
+            kind: "keyword" as const,
+            label: kw.label,
+            summary: kw.summary,
+          }));
+        const newEdges: GraphEdge[] = newNodes.map((n, i) => ({
+          id: `sk_${paperNodeId}_${n.id}_${i}`,
+          source: paperNodeId,
+          target: n.id,
+          kind: "has_keyword" as const,
+        }));
+        const graph = mergeDelta(base, { new_nodes: newNodes, new_edges: newEdges });
+        res.json({ graph });
+        return;
+      }
+    }
+
+    // Fallback: raw OpenAlex keywords
+    const keywords = detail.keywords;
+    if (keywords.length === 0) {
+      res.json({ graph: base });
+      return;
+    }
+    const { nodes: kwNodes, edges: kwEdges } = keywordsToGraphNodes(keywords, paperNodeId);
+    const graph = mergeDelta(base, { new_nodes: kwNodes, new_edges: kwEdges });
+    res.json({ graph });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/graph/expand-paper-sections", apiLimiter, async (req, res) => {
+  try {
+    const base = req.body?.graph as MindGraph | undefined;
+    const paperNodeId = String(req.body?.paperNodeId ?? "").trim();
+    if (!base || !Array.isArray(base.nodes)) {
+      res.status(400).json({ error: "graph with nodes required" });
+      return;
+    }
+    if (!paperNodeId) {
+      res.status(400).json({ error: "paperNodeId required" });
+      return;
+    }
+    const paperNode = base.nodes.find((n) => n.id === paperNodeId);
+    if (!paperNode) {
+      res.status(400).json({ error: "paper node not found" });
+      return;
+    }
+    const title = paperNode.label;
+    if (!title) {
+      res.status(400).json({ error: "paper node has no title/label" });
+      return;
+    }
+    const sections = await fetchPaperSections(title, undefined, S2_API_KEY);
+    if (sections.length === 0) {
+      res.json({ graph: base });
+      return;
+    }
+    const { nodes: secNodes, edges: secEdges } = sectionsToGraphNodes(sections, paperNodeId);
+    const graph = mergeDelta(base, { new_nodes: secNodes, new_edges: secEdges });
+    res.json({ graph });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
   try {
     const base = req.body?.graph as MindGraph | undefined;
@@ -240,5 +410,5 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`API http://localhost:${PORT}`);
+  console.log(`API http://localhost:${PORT} [gemini/${GEMINI_MODEL}]`);
 });

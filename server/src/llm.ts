@@ -122,6 +122,91 @@ export async function expandQuestionToGraph(
   return parseMindGraph(text);
 }
 
+/* ── Hybrid pipeline: organize real paper topics into a graph ── */
+
+export interface PaperWithKeywords {
+  id: string;
+  title: string;
+  isReview: boolean;
+  citedByCount: number;
+  topics: { displayName: string; score: number; subfield: string }[];
+  abstract: string | null;
+}
+
+const ORGANIZE_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown fences):
+{
+  "title": "short session title",
+  "nodes": [
+    { "id": "stable_snake_id", "kind": "topic"|"keyword", "label": "...", "summary": "one sentence" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "parent_id", "target": "child_id", "kind": "expands_to"|"prerequisite_for" }
+  ]
+}
+Rules:
+- Exactly one node with kind "topic" as the root concept for the user's question.
+- Extract specific, research-level keywords from the paper topics and abstracts.
+- Focus on SPECIFIC concepts (e.g., "differential privacy", "model aggregation", "gradient compression") NOT generic disciplines (e.g., "computer science", "engineering", "AI").
+- Group related keywords hierarchically under thematic branches.
+- Use "expands_to" edges for parent→child and "prerequisite_for" where logical.
+- Use ASCII snake_case ids derived from the keyword label.
+- Aim for 10–20 keyword nodes organized in 2–3 levels of depth.`;
+
+export async function organizeKeywordsToGraph(
+  apiKey: string,
+  question: string,
+  papers: PaperWithKeywords[],
+  model: string,
+): Promise<MindGraph> {
+  function formatPaper(p: PaperWithKeywords): string {
+    const topics = p.topics
+      .map((t) => `${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
+      .join(", ");
+    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 400)}` : "";
+    return `- "${p.title}" [${p.citedByCount} citations]\n  Topics: ${topics || "(none)"}${abs}`;
+  }
+
+  const reviewSection = papers.filter((p) => p.isReview).map(formatPaper).join("\n");
+  const articleSection = papers.filter((p) => !p.isReview).map(formatPaper).join("\n");
+
+  const userContent = `Question: ${question}
+
+REVIEW PAPERS (literature reviews):
+${reviewSection || "(none found)"}
+
+TOP-CITED RESEARCH ARTICLES:
+${articleSection || "(none found)"}
+
+From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
+
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text:
+              "You organize real research concepts (from OpenAlex paper topics and abstracts) into a knowledge graph for UI rendering. " +
+              ORGANIZE_SCHEMA_HINT +
+              "\n\n" +
+              userContent,
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.3,
+      responseMimeType: "application/json",
+    },
+  });
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
+  return parseMindGraph(text);
+}
+
+/* ── Delta expansion ── */
+
 const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
@@ -221,6 +306,8 @@ export async function expandFromSelection(
   const delta = parseDelta(text);
   return mergeDelta(base, delta);
 }
+
+/* ── Deep answer ── */
 
 export async function deepAnswer(
   apiKey: string | undefined,
@@ -334,4 +421,76 @@ export async function chatWithPapers(
     generationConfig: { temperature: 0.4 },
   });
   return result.response.text() ?? "";
+}
+
+/* ── Paper section-keyword extraction ── */
+
+export interface PaperDetail {
+  title: string;
+  topics: { displayName: string; score: number; subfield: string }[];
+  abstract: string | null;
+}
+
+const SECTION_KW_HINT = `Return ONLY valid JSON with this shape (no markdown fences):
+{
+  "keywords": [
+    { "id": "snake_case_id", "label": "Short Label", "summary": "one sentence description" }
+  ]
+}
+Rules:
+- Extract 8–16 keywords that represent the paper's actual section-level concepts and subtopics.
+- Think about what the section headings (e.g. 2.1, 2.2, 3.1) of this paper would be, and derive keywords from those.
+- For review/survey papers, the sections typically cover categorizations, challenges, methods, applications — extract THOSE specific concepts.
+- Labels should be concise (2–6 words): e.g. "Non-IID Data", "Horizontal FL", "Secure Aggregation", "Gradient Compression".
+- NEVER output generic discipline labels like "Computer Science", "Engineering", "AI", "Data Science", "Machine Learning".
+- Focus on concepts a researcher would use to navigate this paper's content.
+- Use ASCII snake_case ids derived from the label.`;
+
+export async function extractPaperSectionKeywords(
+  apiKey: string,
+  paper: PaperDetail,
+  model: string,
+): Promise<{ id: string; label: string; summary: string }[]> {
+  const topicList = paper.topics
+    .map((t) => `- ${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
+    .join("\n");
+  const abs = paper.abstract
+    ? `\nAbstract:\n${paper.abstract.slice(0, 1500)}`
+    : "";
+
+  const userContent = `Paper title: "${paper.title}"
+
+Topics:
+${topicList || "(none)"}
+${abs}
+
+Extract the specific section-level research concepts this paper covers. What would the section headings (2.1, 2.2, 3.1, etc.) of this paper be about?`;
+
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text:
+              "You extract section-level research keywords from academic papers based on their title, topics, and abstract. " +
+              SECTION_KW_HINT +
+              "\n\n" +
+              userContent,
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+    },
+  });
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
+  const data = JSON.parse(stripFences(text)) as {
+    keywords?: { id: string; label: string; summary: string }[];
+  };
+  return Array.isArray(data.keywords) ? data.keywords : [];
 }

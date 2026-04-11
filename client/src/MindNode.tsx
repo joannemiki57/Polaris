@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 import type { GraphNode } from "./graphTypes";
 
@@ -9,12 +10,34 @@ export type MindNodeData = {
 };
 
 export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
+  const paperUrl = data.kind === "paper"
+    ? (data.meta.doi ? `https://doi.org/${data.meta.doi.replace(/^https?:\/\/doi\.org\//, "")}` : data.meta.url)
+    : undefined;
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!paperUrl) return;
+      e.stopPropagation();
+      window.open(paperUrl, "_blank", "noopener,noreferrer");
+    },
+    [paperUrl],
+  );
+
   return (
-    <div className={`mind-node${selected ? " selected" : ""}`}>
+    <div
+      className={`mind-node${selected ? " selected" : ""}${paperUrl ? " clickable" : ""}`}
+      onDoubleClick={handleClick}
+    >
       <Handle type="target" position={Position.Left} />
-      <div className="mind-kind">{data.kind}</div>
+      <div className="mind-kind">
+        {data.meta.isReview ? "review" : data.kind}
+        {data.meta.isReview && <span className="mind-review-badge">literature review</span>}
+        {paperUrl && <span className="mind-link-hint">↗</span>}
+        {data.meta.relevance != null && (
+          <span className="mind-relevance">{(data.meta.relevance * 100).toFixed(0)}%</span>
+        )}
+      </div>
       <div className="mind-label">{data.label}</div>
-      {data.summary ? <div className="mind-sum">{data.summary}</div> : null}
       {data.meta.year != null ? (
         <div className="mind-meta">
           {data.meta.year}

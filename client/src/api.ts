@@ -48,6 +48,16 @@ export async function deepAnswer(
   });
 }
 
+export async function expandPaperKeywords(
+  graph: MindGraph,
+  paperNodeId: string,
+): Promise<{ graph: MindGraph }> {
+  return j("/api/graph/expand-paper-keywords", {
+    method: "POST",
+    body: JSON.stringify({ graph, paperNodeId }),
+  });
+}
+
 export async function attachPapers(
   graph: MindGraph,
   keywordId: string,

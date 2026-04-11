@@ -18,6 +18,7 @@ import "reactflow/dist/style.css";
 import {
   attachPapers,
   expandGraph,
+  expandPaperKeywords,
   expandSelection,
   health,
 } from "./api";
@@ -145,9 +146,35 @@ export default function App() {
     }
   };
 
+  const allSelectedArePapers = useMemo(() => {
+    return (
+      selectedNodes.length > 0 &&
+      selectedNodes.every((n) => n.kind === "paper" && n.openAlexId)
+    );
+  }, [selectedNodes]);
+
   const runExpandSelection = async () => {
     if (!graph || !selectedNodes.length) return;
     setBusy(true);
+
+    if (allSelectedArePapers) {
+      setStatus("Fetching keywords from OpenAlex…");
+      try {
+        let g = graph;
+        for (const n of selectedNodes) {
+          const result = await expandPaperKeywords(g, n.id);
+          g = result.graph;
+        }
+        setGraph(g);
+        setStatus("Keywords expanded from OpenAlex.");
+      } catch (e) {
+        setStatus((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     setStatus("Expanding selection…");
     try {
       const sel = selectedNodes.map((n) => ({
@@ -257,7 +284,7 @@ export default function App() {
                 disabled={busy || !graph || selectedNodes.length === 0}
                 onClick={runExpandSelection}
               >
-                Expand selected (LLM)
+                {allSelectedArePapers ? "Expand keywords (OpenAlex)" : "Expand selected (LLM)"}
               </button>
               <button
                 type="button"

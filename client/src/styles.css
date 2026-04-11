@@ -205,6 +205,51 @@ button:disabled {
   letter-spacing: 0.04em;
   color: #94a3b8;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mind-relevance {
+  font-size: 9px;
+  background: #0d9488;
+  color: #f0fdfa;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.mind-review-badge {
+  font-size: 9px;
+  background: #d97706;
+  color: #fffbeb;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.mind-node.clickable {
+  cursor: pointer;
+}
+
+.mind-node.clickable:hover .mind-label {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mind-link-hint {
+  font-size: 10px;
+  color: #64748b;
+  transition: color 0.15s;
+}
+
+.mind-node.clickable:hover .mind-link-hint {
+  color: #38bdf8;
 }
 
 .mind-label {
