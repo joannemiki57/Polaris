@@ -77,6 +77,12 @@ export default function App() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [staggerReveal, setStaggerReveal] = useState(false);
+  const edgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    return () => edgeTimersRef.current.forEach(clearTimeout);
+  }, []);
 
   useEffect(() => {
     health()
@@ -97,15 +103,46 @@ export default function App() {
   }, [question, graph]);
 
   useEffect(() => {
+    edgeTimersRef.current.forEach(clearTimeout);
+    edgeTimersRef.current = [];
+
     if (!graph) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode);
+    const doStagger = staggerReveal;
+    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode, doStagger);
     setNodes(n);
     setEdges(e);
-  }, [graph, layoutMode, setEdges, setNodes]);
+
+    if (doStagger) {
+      const grouped = new Map<number, string[]>();
+      for (const edge of e) {
+        const delay = edge.data?.revealDelay ?? 0;
+        if (!grouped.has(delay)) grouped.set(delay, []);
+        grouped.get(delay)!.push(edge.id);
+      }
+
+      for (const [delay, ids] of grouped) {
+        const idSet = new Set(ids);
+        const timer = setTimeout(() => {
+          setEdges((prev) =>
+            prev.map((ed) =>
+              idSet.has(ed.id) ? { ...ed, style: { ...ed.style, opacity: 1 } } : ed,
+            ),
+          );
+        }, delay + 200);
+        edgeTimersRef.current.push(timer);
+      }
+
+      const maxDelay = Math.max(...[...grouped.keys()], 0);
+      const clearTimer = setTimeout(() => {
+        setStaggerReveal(false);
+      }, maxDelay + 600);
+      edgeTimersRef.current.push(clearTimer);
+    }
+  }, [graph, layoutMode, staggerReveal, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -202,6 +239,7 @@ export default function App() {
     setStatus("Expanding question…");
     try {
       const { graph: g } = await expandGraph(question);
+      setStaggerReveal(true);
       setGraph(g);
       setSelectedIds([]);
       setDeepMd("");
