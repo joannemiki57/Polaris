@@ -151,6 +151,41 @@ export default function App() {
       .filter(Boolean) as GraphNode[];
   }, [graph, selectedIds]);
 
+  const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
+
+  const handleNodeExpand = useCallback(
+    (nodeId: string) => {
+      if (!graph || busy) return;
+      const node = graphNodeById(graph, nodeId);
+      if (!node) return;
+      setSelectedIds([nodeId]);
+      setBusy(true);
+      setStatus("Expanding selection…");
+      const sel = [{ id: node.id, label: node.label, kind: node.kind }];
+      expandSelection(question, graph, sel)
+        .then(({ graph: g }) => {
+          setGraph(g);
+          setStatus("Merged new nodes.");
+        })
+        .catch((e) => setStatus((e as Error).message))
+        .finally(() => setBusy(false));
+    },
+    [graph, busy, question],
+  );
+
+  const handleNodeDeep = useCallback(
+    (nodeId: string) => {
+      if (!graph) return;
+      const node = graphNodeById(graph, nodeId);
+      if (!node) return;
+      const ancestors = getAncestorLabels(graph, node.id);
+      setDeepPageAncestors(ancestors);
+      setDeepPageNodeId(node.id);
+      setDeepPageKeyword(node.label);
+    },
+    [graph],
+  );
+
   useEffect(() => {
     if (!graph) return;
 
@@ -177,6 +212,9 @@ export default function App() {
           ...n.data,
           connected: connectedNodes.has(n.id),
           dimmed: hasSelection && !selectedSet.has(n.id) && !connectedNodes.has(n.id),
+          onExpand: handleNodeExpand,
+          onDeep: handleNodeDeep,
+          busy,
         },
       })),
     );
@@ -215,7 +253,7 @@ export default function App() {
         return e;
       }),
     );
-  }, [graph, selectedIds, layoutMode, setNodes, setEdges]);
+  }, [graph, selectedIds, layoutMode, busy, handleNodeExpand, handleNodeDeep, setNodes, setEdges]);
 
   const onNodeClick = useCallback((evt: ReactMouseEvent, node: Node) => {
     setSelectedIds((prev) => {
@@ -293,8 +331,6 @@ export default function App() {
     setStatus("Markdown downloaded.");
   };
 
-  const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
-
   const pinnedUrls = useMemo(() => {
     if (!graph) return new Set<string>();
     return new Set(
@@ -353,7 +389,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <strong>MindGraph</strong>
+          <strong>Polaris</strong>
           <span className="sub">keywords · graph · OpenAlex</span>
         </div>
         {apiHealth && (
