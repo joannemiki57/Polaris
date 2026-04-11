@@ -10,10 +10,12 @@ import {
   deepAnswer,
   expandFromSelection,
   expandQuestionToGraph,
+  extractPaperSectionKeywords,
   mergeDelta,
   organizeKeywordsToGraph,
 } from "./llm.js";
 import { fetchWorkDetail, fetchWorkKeywords, keywordsToGraphNodes, searchWorks, workHitToPaperNodes } from "./openalex.js";
+import { fetchPaperSections, sectionsToGraphNodes } from "./semanticScholar.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "../.env") });
@@ -25,6 +27,7 @@ const LLM_KEY = process.env.GEMINI_API_KEY ?? process.env.OPENAI_API_KEY;
 const LLM_MODEL = process.env.GEMINI_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 const LLM_PROVIDER: "gemini" | "openai" = process.env.GEMINI_API_KEY ? "gemini" : "openai";
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
+const S2_API_KEY = process.env.S2_API_KEY;
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
@@ -212,13 +215,91 @@ app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
       res.status(400).json({ error: "paper node not found or missing openAlexId" });
       return;
     }
-    const keywords = await fetchWorkKeywords(paperNode.openAlexId, OPENALEX_MAILTO);
+
+    const detail = await fetchWorkDetail(paperNode.openAlexId, OPENALEX_MAILTO);
+
+    // LLM path: extract section-level keywords from topics + abstract
+    if (LLM_KEY && (detail.topics.length > 0 || detail.abstract)) {
+      const sectionKws = await extractPaperSectionKeywords(
+        LLM_KEY,
+        {
+          title: paperNode.label,
+          topics: detail.topics.map((t) => ({
+            displayName: t.displayName,
+            score: t.score,
+            subfield: t.subfield,
+          })),
+          abstract: detail.abstract,
+        },
+        LLM_MODEL,
+        LLM_PROVIDER,
+      );
+      if (sectionKws.length > 0) {
+        const existingIds = new Set(base.nodes.map((n) => n.id));
+        const newNodes = sectionKws
+          .filter((kw) => !existingIds.has(kw.id))
+          .map((kw) => ({
+            id: kw.id,
+            kind: "keyword" as const,
+            label: kw.label,
+            summary: kw.summary,
+          }));
+        const newEdges: GraphEdge[] = newNodes.map((n, i) => ({
+          id: `sk_${paperNodeId}_${n.id}_${i}`,
+          source: paperNodeId,
+          target: n.id,
+          kind: "has_keyword" as const,
+        }));
+        const graph = mergeDelta(base, { new_nodes: newNodes, new_edges: newEdges });
+        res.json({ graph });
+        return;
+      }
+    }
+
+    // Fallback: raw OpenAlex keywords (if no LLM key or LLM returned nothing)
+    const keywords = detail.keywords;
     if (keywords.length === 0) {
       res.json({ graph: base });
       return;
     }
     const { nodes: kwNodes, edges: kwEdges } = keywordsToGraphNodes(keywords, paperNodeId);
     const graph = mergeDelta(base, { new_nodes: kwNodes, new_edges: kwEdges });
+    res.json({ graph });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/graph/expand-paper-sections", apiLimiter, async (req, res) => {
+  try {
+    const base = req.body?.graph as MindGraph | undefined;
+    const paperNodeId = String(req.body?.paperNodeId ?? "").trim();
+    if (!base || !Array.isArray(base.nodes)) {
+      res.status(400).json({ error: "graph with nodes required" });
+      return;
+    }
+    if (!paperNodeId) {
+      res.status(400).json({ error: "paperNodeId required" });
+      return;
+    }
+    const paperNode = base.nodes.find((n) => n.id === paperNodeId);
+    if (!paperNode) {
+      res.status(400).json({ error: "paper node not found" });
+      return;
+    }
+    const title = paperNode.label;
+    if (!title) {
+      res.status(400).json({ error: "paper node has no title/label" });
+      return;
+    }
+    const sections = await fetchPaperSections(title, undefined, S2_API_KEY);
+    if (sections.length === 0) {
+      res.json({ graph: base });
+      return;
+    }
+    const { nodes: secNodes, edges: secEdges } = sectionsToGraphNodes(sections, paperNodeId);
+    const graph = mergeDelta(base, { new_nodes: secNodes, new_edges: secEdges });
     res.json({ graph });
   } catch (e) {
     console.error(e);

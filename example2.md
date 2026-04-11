@@ -1,0 +1,168 @@
+# Federated Learning Concepts
+
+> Question: federated learning
+
+## Nodes
+- **Federated Learning** (`topic`, id: `federated_learning`)
+  - A machine learning paradigm where a shared model is trained across decentralized data sources without direct data exchange.
+- **Privacy and Security in FL** (`keyword`, id: `privacy_and_security_in_fl`)
+  - Addressing critical data privacy and security challenges inherent in distributed machine learning.
+- **Applications of FL** (`keyword`, id: `applications_of_fl`)
+  - Real-world scenarios where federated learning offers significant advantages, especially with sensitive or distributed data.
+- **Technical Aspects and Challenges** (`keyword`, id: `technical_aspects_and_challenges`)
+  - The core technical considerations and difficulties in implementing and scaling federated learning systems.
+- **Data Management in FL** (`keyword`, id: `data_management_in_fl`)
+  - Strategies and principles for handling data distribution and access within federated learning environments.
+- **Privacy-Preserving FL** (`keyword`, id: `privacy_preserving_fl`)
+  - Specific techniques and methods designed to protect data privacy during federated learning processes.
+- **Data Privacy Concerns** (`keyword`, id: `data_privacy_concerns`)
+  - The fundamental issues and risks related to protecting sensitive information in distributed learning.
+- **Cryptography** (`keyword`, id: `cryptography`)
+  - The use of secure communication techniques to protect data and model updates in federated learning.
+- **Secure Aggregation** (`keyword`, id: `secure_aggregation`)
+  - A cryptographic technique ensuring that individual client updates are combined without revealing them to the server.
+- **Differential Privacy** (`keyword`, id: `differential_privacy`)
+  - A privacy-preserving technique that adds noise to data or model updates to prevent inference about individual data points.
+- **Smart Healthcare** (`keyword`, id: `smart_healthcare`)
+  - Applying federated learning to medical data for improved diagnostics and personalized treatments while preserving patient privacy.
+- **Internet-of-Medical-Things (IoMT)** (`keyword`, id: `internet_of_medical_things_iomt`)
+  - Integration of medical devices and sensors with federated learning for real-time health monitoring and analysis.
+- **Medical Data Silos** (`keyword`, id: `medical_data_silos`)
+  - Addressing the challenge of fragmented medical data across different institutions using federated learning.
+- **Mobile Crowdsensing** (`keyword`, id: `mobile_crowdsensing`)
+  - Leveraging federated learning for data collection and model training from a large number of mobile devices.
+- **Mobile Devices** (`keyword`, id: `mobile_devices`)
+  - Using federated learning to train models directly on user devices, such as smartphones and wearables.
+- **Distributed Optimization** (`keyword`, id: `distributed_optimization`)
+  - Algorithms and methods for optimizing models across multiple decentralized computing nodes.
+- **Model Aggregation** (`keyword`, id: `model_aggregation`)
+  - The process of combining local model updates from clients into a global model on the central server.
+- **Heterogeneous Networks** (`keyword`, id: `heterogeneous_networks`)
+  - Managing federated learning in environments with diverse client capabilities, data distributions, and network conditions.
+- **Decentralized Data Training** (`keyword`, id: `decentralized_data_training`)
+  - The core principle of federated learning where training data remains on local devices or servers.
+- **Data Localization** (`keyword`, id: `data_localization`)
+  - The practice of keeping data stored and processed within its original geographical or organizational boundaries.
+- **A review of applications in federated learning** (`paper`, id: `paper_W3086809868`)
+  - DOI: https://doi.org/10.1016/j.cie.2020.106854
+  - OpenAlex: https://openalex.org/W3086809868
+  - https://openalex.org/W3086809868
+- **Federated Learning for Smart Healthcare: A Survey** (`paper`, id: `paper_W4226461837`)
+  - DOI: https://doi.org/10.1145/3501296
+  - OpenAlex: https://openalex.org/W4226461837
+  - https://openalex.org/W4226461837
+- **A Comprehensive Survey of Privacy-preserving Federated Learning** (`paper`, id: `paper_W3180608480`)
+  - DOI: https://doi.org/10.1145/3460427
+  - OpenAlex: https://openalex.org/W3180608480
+  - https://openalex.org/W3180608480
+- **Advances and Open Problems in Federated Learning** (`paper`, id: `paper_W2995022099`)
+  - DOI: https://doi.org/10.1561/2200000083
+  - OpenAlex: https://openalex.org/W2995022099
+  - https://openalex.org/W2995022099
+- **Federated Learning: Challenges, Methods, and Future Directions** (`paper`, id: `paper_W3021654819`)
+  - DOI: https://doi.org/10.1109/msp.2020.2975749
+  - OpenAlex: https://openalex.org/W3021654819
+  - https://openalex.org/W3021654819
+- **The future of digital health with federated learning** (`paper`, id: `paper_W3012501605`)
+  - DOI: https://doi.org/10.1038/s41746-020-00323-1
+  - OpenAlex: https://openalex.org/W3012501605
+  - https://openalex.org/W3012501605
+- **Orchestration** (`keyword`, id: `kw_orchestration`)
+  - Relevance: 81%
+  - OpenAlex: https://openalex.org/keywords/orchestration
+- **Computer science** (`keyword`, id: `kw_computer_science`)
+  - Relevance: 76%
+  - OpenAlex: https://openalex.org/keywords/computer-science
+- **Data collection** (`keyword`, id: `kw_data_collection`)
+  - Relevance: 56%
+  - OpenAlex: https://openalex.org/keywords/data-collection
+- **Federated learning** (`keyword`, id: `kw_federated_learning`)
+  - Relevance: 55%
+  - OpenAlex: https://openalex.org/keywords/federated-learning
+- **Open research** (`keyword`, id: `kw_open_research`)
+  - Relevance: 55%
+  - OpenAlex: https://openalex.org/keywords/open-research
+- **Service provider** (`keyword`, id: `kw_service_provider`)
+  - Relevance: 48%
+  - OpenAlex: https://openalex.org/keywords/service-provider
+- **Data science** (`keyword`, id: `kw_data_science`)
+  - Relevance: 46%
+  - OpenAlex: https://openalex.org/keywords/data-science
+- **Service (business)** (`keyword`, id: `kw_service`)
+  - Relevance: 43%
+  - OpenAlex: https://openalex.org/keywords/service
+- **Artificial intelligence** (`keyword`, id: `kw_artificial_intelligence`)
+  - Relevance: 30%
+  - OpenAlex: https://openalex.org/keywords/artificial-intelligence
+- **World Wide Web** (`keyword`, id: `kw_world_wide_web`)
+  - Relevance: 27%
+  - OpenAlex: https://openalex.org/keywords/world-wide-web
+- **Business** (`keyword`, id: `kw_business`)
+  - Relevance: 11%
+  - OpenAlex: https://openalex.org/keywords/business
+- **Incentive Mechanisms in MCS** (`keyword`, id: `mcs_incentive_mechanisms`)
+  - Strategies and models used to motivate mobile users to participate in crowdsensing tasks and contribute data.
+- **Data Quality in MCS** (`keyword`, id: `mcs_data_quality`)
+  - Ensuring the accuracy, reliability, and completeness of data collected from diverse mobile devices and users in crowdsensing campaigns.
+- **Applications of MCS** (`keyword`, id: `mcs_applications`)
+  - Real-world uses of mobile crowdsensing, including environmental monitoring, smart city services, traffic management, and healthcare.
+- **Homomorphic Encryption** (`keyword`, id: `homomorphic_encryption`)
+  - A form of encryption that allows computations to be performed on encrypted data without decrypting it first, yielding an encrypted result which, when decrypted, matches the result of operations performed on the unencrypted data.
+- **Multi-Party Computation (MPC)** (`keyword`, id: `multi_party_computation`)
+  - A cryptographic technique that enables multiple parties to jointly compute a function over their private inputs while keeping those inputs secret from each other.
+- **Secret Sharing** (`keyword`, id: `secret_sharing`)
+  - A method for distributing a secret among a group of participants, each of whom is allocated a share of the secret, such that the secret can only be reconstructed when a sufficient number of shares are combined.
+- **Zero-Knowledge Proofs** (`keyword`, id: `zero_knowledge_proofs`)
+  - A cryptographic protocol allowing one party to prove to another that a statement is true, without revealing any information beyond the validity of the statement itself.
+- **Trusted Execution Environments (TEEs)** (`keyword`, id: `trusted_execution_environments`)
+  - A secure area of a main processor that guarantees code and data loaded inside are protected with respect to confidentiality and integrity.
+
+## Edges
+- `federated_learning` —expands_to→ `privacy_and_security_in_fl`
+- `federated_learning` —expands_to→ `applications_of_fl`
+- `federated_learning` —expands_to→ `technical_aspects_and_challenges`
+- `federated_learning` —expands_to→ `data_management_in_fl`
+- `privacy_and_security_in_fl` —expands_to→ `privacy_preserving_fl`
+- `privacy_and_security_in_fl` —expands_to→ `data_privacy_concerns`
+- `privacy_preserving_fl` —expands_to→ `cryptography`
+- `privacy_preserving_fl` —expands_to→ `secure_aggregation`
+- `privacy_preserving_fl` —expands_to→ `differential_privacy`
+- `applications_of_fl` —expands_to→ `smart_healthcare`
+- `applications_of_fl` —expands_to→ `mobile_crowdsensing`
+- `applications_of_fl` —expands_to→ `mobile_devices`
+- `smart_healthcare` —expands_to→ `internet_of_medical_things_iomt`
+- `smart_healthcare` —expands_to→ `medical_data_silos`
+- `technical_aspects_and_challenges` —expands_to→ `distributed_optimization`
+- `technical_aspects_and_challenges` —expands_to→ `model_aggregation`
+- `technical_aspects_and_challenges` —expands_to→ `heterogeneous_networks`
+- `data_management_in_fl` —expands_to→ `decentralized_data_training`
+- `data_management_in_fl` —expands_to→ `data_localization`
+- `federated_learning` —from_openalex→ `paper_W3086809868`
+- `federated_learning` —from_openalex→ `paper_W4226461837`
+- `federated_learning` —from_openalex→ `paper_W3180608480`
+- `federated_learning` —from_openalex→ `paper_W2995022099`
+- `federated_learning` —from_openalex→ `paper_W3021654819`
+- `federated_learning` —from_openalex→ `paper_W3012501605`
+- `paper_W2995022099` —has_keyword→ `kw_orchestration`
+- `paper_W2995022099` —has_keyword→ `kw_computer_science`
+- `paper_W2995022099` —has_keyword→ `kw_data_collection`
+- `paper_W2995022099` —has_keyword→ `kw_federated_learning`
+- `paper_W2995022099` —has_keyword→ `kw_open_research`
+- `paper_W2995022099` —has_keyword→ `kw_service_provider`
+- `paper_W2995022099` —has_keyword→ `kw_data_science`
+- `paper_W2995022099` —has_keyword→ `kw_service`
+- `paper_W2995022099` —has_keyword→ `kw_artificial_intelligence`
+- `paper_W2995022099` —has_keyword→ `kw_world_wide_web`
+- `paper_W2995022099` —has_keyword→ `kw_business`
+- `mobile_crowdsensing` —expands_to→ `mcs_incentive_mechanisms`
+- `mobile_crowdsensing` —expands_to→ `mcs_data_quality`
+- `mobile_crowdsensing` —expands_to→ `mcs_applications`
+- `mobile_crowdsensing` —expands_to→ `mobile_devices`
+- `mobile_crowdsensing` —expands_to→ `kw_data_collection`
+- `secure_aggregation` —expands_to→ `homomorphic_encryption`
+- `secure_aggregation` —expands_to→ `multi_party_computation`
+- `secure_aggregation` —expands_to→ `secret_sharing`
+- `cryptography` —expands_to→ `zero_knowledge_proofs`
+- `cryptography` —expands_to→ `trusted_execution_environments`
+
+_OpenAlex data via [OpenAlex](https://openalex.org) — cite and respect their terms._

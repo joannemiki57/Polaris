@@ -232,6 +232,26 @@ button:disabled {
   font-weight: 600;
 }
 
+.mind-node.clickable {
+  cursor: pointer;
+}
+
+.mind-node.clickable:hover .mind-label {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mind-link-hint {
+  font-size: 10px;
+  color: #64748b;
+  transition: color 0.15s;
+}
+
+.mind-node.clickable:hover .mind-link-hint {
+  color: #38bdf8;
+}
+
 .mind-label {
   font-weight: 600;
   line-height: 1.25;

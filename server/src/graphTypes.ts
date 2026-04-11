@@ -5,6 +5,7 @@ export type EdgeKind =
   | "prerequisite_for"
   | "from_openalex"
   | "has_keyword"
+  | "has_section"
   | "user_linked";
 
 export interface GraphNode {

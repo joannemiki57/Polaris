@@ -288,6 +288,73 @@ export async function expandFromSelection(
   return mergeDelta(base, delta);
 }
 
+// ── Paper section-keyword extraction ──────────────────────────
+
+export interface PaperDetail {
+  title: string;
+  topics: { displayName: string; score: number; subfield: string }[];
+  abstract: string | null;
+}
+
+const SECTION_KW_HINT = `Return ONLY valid JSON with this shape (no markdown):
+{
+  "keywords": [
+    { "id": "snake_case_id", "label": "Short Label", "summary": "one sentence description" }
+  ]
+}
+Rules:
+- Extract 8–16 keywords that represent the paper's actual section-level concepts and subtopics.
+- Think about what the section headings (e.g. 2.1, 2.2, 3.1) of this paper would be, and derive keywords from those.
+- For review/survey papers, the sections typically cover categorizations, challenges, methods, applications — extract THOSE specific concepts.
+- Labels should be concise (2–6 words): e.g. "Non-IID Data", "Horizontal FL", "Secure Aggregation", "Gradient Compression".
+- NEVER output generic discipline labels like "Computer Science", "Engineering", "AI", "Data Science", "Machine Learning".
+- Focus on concepts a researcher would use to navigate this paper's content.
+- Use ASCII snake_case ids derived from the label.`;
+
+export async function extractPaperSectionKeywords(
+  apiKey: string,
+  paper: PaperDetail,
+  model: string,
+  provider: "gemini" | "openai" = "openai",
+): Promise<{ id: string; label: string; summary: string }[]> {
+  const topicList = paper.topics
+    .map((t) => `- ${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
+    .join("\n");
+  const abs = paper.abstract
+    ? `\nAbstract:\n${paper.abstract.slice(0, 1500)}`
+    : "";
+
+  const userContent = `Paper title: "${paper.title}"
+
+Topics:
+${topicList || "(none)"}
+${abs}
+
+Extract the specific section-level research concepts this paper covers. What would the section headings (2.1, 2.2, 3.1, etc.) of this paper be about?`;
+
+  const client = makeClient(apiKey, provider);
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You extract section-level research keywords from academic papers based on their title, topics, and abstract. " +
+          SECTION_KW_HINT,
+      },
+      { role: "user", content: userContent },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error("Empty LLM response");
+  const data = JSON.parse(text) as {
+    keywords?: { id: string; label: string; summary: string }[];
+  };
+  return Array.isArray(data.keywords) ? data.keywords : [];
+}
+
 export async function deepAnswer(
   apiKey: string | undefined,
   question: string,
