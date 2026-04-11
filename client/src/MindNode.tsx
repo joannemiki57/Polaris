@@ -7,6 +7,10 @@ export type MindNodeData = {
   kind: GraphNode["kind"];
   summary?: string;
   meta: GraphNode;
+  connected?: boolean;
+  dimmed?: boolean;
+  revealDelay?: number;
+  stagger?: boolean;
 };
 
 export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
@@ -23,20 +27,30 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
     [paperUrl],
   );
 
+  const revealStyle = data.stagger
+    ? { animationDelay: `${data.revealDelay ?? 0}ms` }
+    : undefined;
+
   return (
     <div
-      className={`mind-node${selected ? " selected" : ""}${paperUrl ? " clickable" : ""}`}
+      className={`mind-node${selected ? " selected" : ""}${data.connected ? " connected" : ""}${data.dimmed ? " dimmed" : ""}${paperUrl ? " clickable" : ""}${data.stagger ? " mind-node-reveal" : ""}`}
       onDoubleClick={handleClick}
+      style={revealStyle}
     >
-      <Handle type="target" position={Position.Left} />
-      <div className="mind-kind">
-        {data.meta.isReview ? "review" : data.kind}
-        {data.meta.isReview && <span className="mind-review-badge">literature review</span>}
-        {paperUrl && <span className="mind-link-hint">↗</span>}
-        {data.meta.relevance != null && (
-          <span className="mind-relevance">{(data.meta.relevance * 100).toFixed(0)}%</span>
-        )}
-      </div>
+      <Handle type="target" id="t-left" position={Position.Left} />
+      <Handle type="target" id="t-top" position={Position.Top} />
+      <Handle type="target" id="t-right" position={Position.Right} />
+      <Handle type="target" id="t-bottom" position={Position.Bottom} />
+
+      {data.kind === "paper" && (
+        <div className="mind-kind">
+          paper
+          {paperUrl && <span className="mind-link-hint">↗</span>}
+        </div>
+      )}
+      {data.kind === "topic" && (
+        <div className="mind-kind">topic</div>
+      )}
       <div className="mind-label">{data.label}</div>
       {data.meta.year != null ? (
         <div className="mind-meta">
@@ -44,7 +58,11 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
           {data.meta.citedByCount != null ? ` · ${data.meta.citedByCount} cites` : ""}
         </div>
       ) : null}
-      <Handle type="source" position={Position.Right} />
+
+      <Handle type="source" id="s-left" position={Position.Left} />
+      <Handle type="source" id="s-top" position={Position.Top} />
+      <Handle type="source" id="s-right" position={Position.Right} />
+      <Handle type="source" id="s-bottom" position={Position.Bottom} />
     </div>
   );
 }

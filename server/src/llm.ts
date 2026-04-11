@@ -207,6 +207,24 @@ From the topics and abstracts above, extract specific research-level keywords an
 
 /* ── Delta expansion ── */
 
+function getAncestry(
+  base: MindGraph,
+  nodeId: string,
+  maxDepth = 2,
+): { id: string; label: string; kind: string }[] {
+  const ancestors: { id: string; label: string; kind: string }[] = [];
+  let current = nodeId;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    const parentEdge = base.edges.find((e) => e.target === current);
+    if (!parentEdge) break;
+    const parentNode = base.nodes.find((n) => n.id === parentEdge.source);
+    if (!parentNode) break;
+    ancestors.push({ id: parentNode.id, label: parentNode.label, kind: parentNode.kind });
+    current = parentNode.id;
+  }
+  return ancestors;
+}
+
 const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
@@ -216,7 +234,10 @@ const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
     { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for"|"user_linked" }
   ]
 }
-Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.`;
+Rules:
+- Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.
+- Each selected node includes its ANCESTRY (parent → grandparent chain). Use this lineage to generate SPECIFIC, contextually relevant child nodes — not generic subtopics of the label alone.
+- The deeper a node is in the tree, the more specialized its children should be. A node's meaning is defined by its full path from the root, not just its own label.`;
 
 function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
   const data = JSON.parse(stripFences(raw)) as {
@@ -275,10 +296,18 @@ export async function expandFromSelection(
     return mergeDelta(base, { new_nodes: extra, new_edges: edges });
   }
 
+  const selectedWithAncestry = selected.map((s) => {
+    const ancestors = getAncestry(base, s.id);
+    return {
+      ...s,
+      ancestry: ancestors.map((a) => a.label),
+    };
+  });
+
   const gemini = getGemini(apiKey, model);
   const payload = JSON.stringify({
     originalQuestion: question,
-    selected,
+    selected: selectedWithAncestry,
     existingNodeIds: base.nodes.map((n) => n.id),
   });
   const result = await gemini.generateContent({
@@ -288,7 +317,7 @@ export async function expandFromSelection(
         parts: [
           {
             text:
-              "Given the user's question and SELECTED nodes from their graph, add focused child nodes. " +
+              "Given the user's research question and SELECTED nodes (with their ancestry path from root), generate specialized child nodes that are contextually grounded in the full lineage — not just the node label in isolation. " +
               DELTA_HINT +
               "\n\n" +
               payload,

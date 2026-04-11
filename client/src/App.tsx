@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -16,16 +17,15 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import {
-  attachPapers,
   expandGraph,
-  expandPaperKeywords,
   expandSelection,
   health,
 } from "./api";
 import { DeepAnswerPage } from "./DeepAnswerPage";
 import type { GraphNode, MindGraph } from "./graphTypes";
-import { mindGraphToFlow } from "./layout";
+import { mindGraphToFlow, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
+import { SkeletonMindMap } from "./SkeletonMindMap";
 import {
   clearSession,
   downloadMarkdown,
@@ -63,7 +63,6 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [paperQuery, setPaperQuery] = useState("");
   const [deepMd, setDeepMd] = useState("");
   const [status, setStatus] = useState("");
   const [apiHealth, setApiHealth] = useState<{
@@ -71,6 +70,8 @@ export default function App() {
     openAlexMailto: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("tree");
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
   const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
 
@@ -101,10 +102,10 @@ export default function App() {
       setEdges([]);
       return;
     }
-    const { nodes: n, edges: e } = mindGraphToFlow(graph);
+    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode);
     setNodes(n);
     setEdges(e);
-  }, [graph, setEdges, setNodes]);
+  }, [graph, layoutMode, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -114,10 +115,70 @@ export default function App() {
   }, [graph, selectedIds]);
 
   useEffect(() => {
-    if (selectedNodes.length === 1) {
-      setPaperQuery(selectedNodes[0]!.label);
+    if (!graph) return;
+
+    const selectedSet = new Set(selectedIds);
+    const connectedNodes = new Set<string>();
+    const connectedEdges = new Set<string>();
+    const hasSelection = selectedIds.length > 0;
+
+    for (const edge of graph.edges) {
+      const srcSel = selectedSet.has(edge.source);
+      const tgtSel = selectedSet.has(edge.target);
+      if (srcSel || tgtSel) {
+        if (srcSel) connectedNodes.add(edge.target);
+        if (tgtSel) connectedNodes.add(edge.source);
+        connectedEdges.add(edge.id);
+      }
     }
-  }, [selectedNodes]);
+    for (const id of selectedIds) connectedNodes.delete(id);
+
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          connected: connectedNodes.has(n.id),
+          dimmed: hasSelection && !selectedSet.has(n.id) && !connectedNodes.has(n.id),
+        },
+      })),
+    );
+
+    setEdges((eds) =>
+      eds.map((e) => {
+        const graphEdge = graph.edges.find((ge) => ge.id === e.id);
+        if (connectedEdges.has(e.id)) {
+          return {
+            ...e,
+            animated: true,
+            style: { ...e.style, stroke: "#818cf8", strokeWidth: 2.5 },
+            className: "edge-connected",
+          };
+        }
+        if (graphEdge) {
+          return {
+            ...e,
+            animated:
+              layoutMode === "tree" &&
+              (graphEdge.kind === "expands_to" || graphEdge.kind === "has_keyword"),
+            style: {
+              ...e.style,
+              stroke: graphEdge.kind === "has_keyword" ? "#0d9488" : "#475569",
+              strokeWidth:
+                layoutMode === "radial"
+                  ? 1
+                  : graphEdge.kind === "has_keyword"
+                    ? 1.6
+                    : 1.2,
+              opacity: hasSelection ? 0.25 : 1,
+            },
+            className: undefined,
+          };
+        }
+        return e;
+      }),
+    );
+  }, [graph, selectedIds, layoutMode, setNodes, setEdges]);
 
   const onNodeClick = useCallback((evt: ReactMouseEvent, node: Node) => {
     setSelectedIds((prev) => {
@@ -130,8 +191,14 @@ export default function App() {
     });
   }, []);
 
+  const onPaneClick = useCallback(() => {
+    setSelectedIds([]);
+  }, []);
+
   const runExpand = async () => {
     setBusy(true);
+    setGenerating(true);
+    setGraph(null);
     setStatus("Expanding question…");
     try {
       const { graph: g } = await expandGraph(question);
@@ -143,38 +210,13 @@ export default function App() {
       setStatus((e as Error).message);
     } finally {
       setBusy(false);
+      setGenerating(false);
     }
   };
-
-  const allSelectedArePapers = useMemo(() => {
-    return (
-      selectedNodes.length > 0 &&
-      selectedNodes.every((n) => n.kind === "paper" && n.openAlexId)
-    );
-  }, [selectedNodes]);
 
   const runExpandSelection = async () => {
     if (!graph || !selectedNodes.length) return;
     setBusy(true);
-
-    if (allSelectedArePapers) {
-      setStatus("Fetching keywords from OpenAlex…");
-      try {
-        let g = graph;
-        for (const n of selectedNodes) {
-          const result = await expandPaperKeywords(g, n.id);
-          g = result.graph;
-        }
-        setGraph(g);
-        setStatus("Keywords expanded from OpenAlex.");
-      } catch (e) {
-        setStatus((e as Error).message);
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-
     setStatus("Expanding selection…");
     try {
       const sel = selectedNodes.map((n) => ({
@@ -198,24 +240,10 @@ export default function App() {
     if (!node) return;
     const ancestors = getAncestorLabels(graph, node.id);
     setDeepPageAncestors(ancestors);
+    setDeepPageNodeId(node.id);
     setDeepPageKeyword(node.label);
   };
 
-  const runPapers = async () => {
-    if (!graph || selectedIds.length !== 1) return;
-    const kid = selectedIds[0]!;
-    setBusy(true);
-    setStatus("Fetching OpenAlex…");
-    try {
-      const { graph: g } = await attachPapers(graph, kid, (paperQuery || graphNodeById(graph, kid)?.label) ?? "");
-      setGraph(g);
-      setStatus("Papers attached. Data: OpenAlex.");
-    } catch (e) {
-      setStatus((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const exportMd = () => {
     if (!graph) return;
@@ -227,12 +255,58 @@ export default function App() {
     setStatus("Markdown downloaded.");
   };
 
+  const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
+
+  const pinnedUrls = useMemo(() => {
+    if (!graph) return new Set<string>();
+    return new Set(
+      graph.nodes.filter((n) => n.kind === "paper" && n.url).map((n) => n.url!),
+    );
+  }, [graph]);
+
+  const handlePinPaper = useCallback(
+    (paper: import("./api").DeepPaper) => {
+      if (!graph || !deepPageNodeId) return;
+      const shortId = paper.openAlexUrl.split("/").pop() ?? "";
+      const paperId = `paper_${shortId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      if (graph.nodes.some((n) => n.id === paperId)) return;
+
+      const newNode: GraphNode = {
+        id: paperId,
+        kind: "paper",
+        label: paper.title,
+        doi: paper.doi ?? undefined,
+        year: paper.year ?? undefined,
+        citedByCount: paper.citedByCount ?? undefined,
+        url: paper.openAlexUrl,
+        openAlexId: paper.openAlexUrl,
+        summary: paper.doi ? `DOI: ${paper.doi}` : undefined,
+      };
+      const newEdge = {
+        id: `pin_${deepPageNodeId}_${paperId}`,
+        source: deepPageNodeId,
+        target: paperId,
+        kind: "from_openalex" as const,
+      };
+      setGraph({
+        ...graph,
+        nodes: [...graph.nodes, newNode],
+        edges: [...graph.edges, newEdge],
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [graph, deepPageNodeId],
+  );
+
   if (deepPageKeyword) {
     return (
       <DeepAnswerPage
         keyword={deepPageKeyword}
+        keywordNodeId={deepPageNodeId!}
         ancestors={deepPageAncestors}
         onBack={() => setDeepPageKeyword(null)}
+        onPinPaper={handlePinPaper}
+        pinnedUrls={pinnedUrls}
       />
     );
   }
@@ -284,7 +358,7 @@ export default function App() {
                 disabled={busy || !graph || selectedNodes.length === 0}
                 onClick={runExpandSelection}
               >
-                {allSelectedArePapers ? "Expand keywords (OpenAlex)" : "Expand selected (LLM)"}
+                Expand selected (LLM)
               </button>
               <button
                 type="button"
@@ -297,28 +371,25 @@ export default function App() {
             </div>
           </div>
 
+
           <div className="panel-section">
-            <h3>OpenAlex papers</h3>
-            <label className="lbl">Search query</label>
-            <input
-              className="inp"
-              value={paperQuery}
-              onChange={(e) => setPaperQuery(e.target.value)}
-              placeholder="English keywords work best"
-            />
-            <button
-              type="button"
-              disabled={busy || !graph || selectedIds.length !== 1}
-              onClick={runPapers}
-            >
-              Attach papers to selected node
-            </button>
-            <p className="hint small">
-              Attribution:{" "}
-              <a href="https://openalex.org" target="_blank" rel="noreferrer">
-                OpenAlex
-              </a>
-            </p>
+            <h3>Layout</h3>
+            <div className="layout-toggle">
+              <button
+                type="button"
+                className={`layout-btn${layoutMode === "tree" ? " layout-active" : ""}`}
+                onClick={() => setLayoutMode("tree")}
+              >
+                <span className="layout-icon">→</span> Tree
+              </button>
+              <button
+                type="button"
+                className={`layout-btn${layoutMode === "radial" ? " layout-active" : ""}`}
+                onClick={() => setLayoutMode("radial")}
+              >
+                <span className="layout-icon">◎</span> Graph
+              </button>
+            </div>
           </div>
 
           <div className="panel-section">
@@ -351,21 +422,26 @@ export default function App() {
 
         <section className="canvas-wrap">
           <div className="flow">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              nodeTypes={nodeTypes}
-              fitView
-              minZoom={0.2}
-              maxZoom={1.5}
-            >
-              <MiniMap pannable zoomable />
-              <Controls />
-              <Background gap={16} color="#1e293b" />
-            </ReactFlow>
+            {generating ? (
+              <SkeletonMindMap />
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.2}
+                maxZoom={1.5}
+              >
+                <MiniMap pannable zoomable />
+                <Controls />
+                <Background gap={16} color="#1e293b" />
+              </ReactFlow>
+            )}
           </div>
           <div className="deep-panel">
             <h3>Deep panel</h3>
