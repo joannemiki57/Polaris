@@ -17,11 +17,11 @@ import "reactflow/dist/style.css";
 
 import {
   attachPapers,
-  deepAnswer,
   expandGraph,
   expandSelection,
   health,
 } from "./api";
+import { DeepAnswerPage } from "./DeepAnswerPage";
 import type { GraphNode, MindGraph } from "./graphTypes";
 import { mindGraphToFlow } from "./layout";
 import { MindNode } from "./MindNode";
@@ -39,6 +39,25 @@ function graphNodeById(g: MindGraph, id: string): GraphNode | undefined {
   return g.nodes.find((n) => n.id === id);
 }
 
+function getAncestorLabels(g: MindGraph, nodeId: string): string[] {
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+    for (const e of g.edges) {
+      if (e.target === cur && !visited.has(e.source)) {
+        const parent = graphNodeById(g, e.source);
+        if (parent) labels.push(parent.label);
+        queue.push(e.source);
+      }
+    }
+  }
+  return labels;
+}
+
 export default function App() {
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
@@ -51,6 +70,8 @@ export default function App() {
     openAlexMailto: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
+  const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -144,24 +165,13 @@ export default function App() {
     }
   };
 
-  const runDeep = async () => {
-    if (!graph) return;
-    setBusy(true);
-    setStatus("Deep answer…");
-    try {
-      const sel = selectedNodes.map((n) => ({
-        id: n.id,
-        label: n.label,
-        summary: n.summary,
-      }));
-      const { markdown } = await deepAnswer(question, sel);
-      setDeepMd(markdown);
-      setStatus("Deep answer ready.");
-    } catch (e) {
-      setStatus((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  const runDeep = () => {
+    if (!graph || selectedIds.length !== 1) return;
+    const node = graphNodeById(graph, selectedIds[0]!);
+    if (!node) return;
+    const ancestors = getAncestorLabels(graph, node.id);
+    setDeepPageAncestors(ancestors);
+    setDeepPageKeyword(node.label);
   };
 
   const runPapers = async () => {
@@ -189,6 +199,16 @@ export default function App() {
     );
     setStatus("Markdown downloaded.");
   };
+
+  if (deepPageKeyword) {
+    return (
+      <DeepAnswerPage
+        keyword={deepPageKeyword}
+        ancestors={deepPageAncestors}
+        onBack={() => setDeepPageKeyword(null)}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -241,10 +261,11 @@ export default function App() {
               </button>
               <button
                 type="button"
-                disabled={busy || !graph || selectedNodes.length === 0}
+                className="da-btn-primary"
+                disabled={busy || !graph || selectedIds.length !== 1}
                 onClick={runDeep}
               >
-                Deep answer (LLM)
+                Deep Answer (LLM)
               </button>
             </div>
           </div>

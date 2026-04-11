@@ -6,11 +6,14 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import type { GraphEdge, MindGraph } from "./graphTypes.js";
 import {
+  chatWithPapers,
   deepAnswer,
   expandFromSelection,
   expandQuestionToGraph,
+  type ChatMessage,
 } from "./llm.js";
-import { searchWorks, workHitToPaperNodes } from "./openalex.js";
+import { searchResearchPapers, searchWorks, workHitToPaperNodes } from "./openalex.js";
+import type { OpenAlexWorkDetailed } from "./openalex.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "../.env") });
@@ -18,8 +21,8 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8787;
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
 
 app.use(cors({ origin: true }));
@@ -56,7 +59,7 @@ const strictLimiter = rateLimit({
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    llm: Boolean(OPENAI_KEY),
+    llm: Boolean(GEMINI_KEY),
     openAlexMailto: Boolean(OPENALEX_MAILTO),
   });
 });
@@ -68,7 +71,7 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const graph = await expandQuestionToGraph(OPENAI_KEY, question, OPENAI_MODEL);
+    const graph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
     res.json({ graph });
   } catch (e) {
     console.error(e);
@@ -92,11 +95,11 @@ app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
       return;
     }
     const graph = await expandFromSelection(
-      OPENAI_KEY,
+      GEMINI_KEY,
       question,
       selected,
       base,
-      OPENAI_MODEL,
+      GEMINI_MODEL,
     );
     res.json({ graph });
   } catch (e) {
@@ -115,8 +118,70 @@ app.post("/api/llm/deep", strictLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const text = await deepAnswer(OPENAI_KEY, question, selected ?? [], OPENAI_MODEL);
+    const text = await deepAnswer(GEMINI_KEY, question, selected ?? [], GEMINI_MODEL);
     res.json({ markdown: text });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// In-memory store for paper sessions (per keyword)
+const paperSessions = new Map<string, OpenAlexWorkDetailed[]>();
+
+app.post("/api/deep-answer/init", strictLimiter, async (req, res) => {
+  try {
+    const keyword = String(req.body?.keyword ?? "").trim();
+    if (!keyword) {
+      res.status(400).json({ error: "keyword required" });
+      return;
+    }
+    const papers = await searchResearchPapers(keyword, OPENALEX_MAILTO, 10);
+    const sessionId = `${keyword}_${Date.now()}`;
+    paperSessions.set(sessionId, papers);
+
+    const paperList = papers.map((p) => ({
+      title: p.title ?? "Untitled",
+      authors: p.authorNames,
+      year: p.publication_year,
+      doi: p.doi,
+      citedByCount: p.cited_by_count,
+      abstract: p.abstract,
+      openAlexUrl: p.id.startsWith("http") ? p.id : `https://openalex.org/${p.id}`,
+    }));
+
+    res.json({ sessionId, keyword, papers: paperList });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/deep-answer/chat", strictLimiter, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId ?? "").trim();
+    const keyword = String(req.body?.keyword ?? "").trim();
+    const message = String(req.body?.message ?? "").trim();
+    const history = (req.body?.history ?? []) as ChatMessage[];
+
+    if (!sessionId || !keyword || !message) {
+      res.status(400).json({ error: "sessionId, keyword, and message required" });
+      return;
+    }
+    const papers = paperSessions.get(sessionId);
+    if (!papers) {
+      res.status(404).json({ error: "Session expired or not found. Please re-init." });
+      return;
+    }
+    const reply = await chatWithPapers(
+      GEMINI_KEY,
+      keyword,
+      papers,
+      history,
+      message,
+      GEMINI_MODEL,
+    );
+    res.json({ reply });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });
