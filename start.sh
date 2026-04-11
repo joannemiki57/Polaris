@@ -3,25 +3,19 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Install deps if needed
 if [ ! -d node_modules ]; then
-  echo "📦 Installing dependencies..."
+  echo "Installing dependencies..."
   npm install
 fi
 
-# Start dev servers (API + Vite) in the background
+echo "Starting dev servers (client :5173 + server :8787)..."
+
 npm run dev &
 DEV_PID=$!
 
-# Wait for Vite to be ready, then open the browser
-echo "⏳ Waiting for dev server..."
-until curl -s http://localhost:5173 > /dev/null 2>&1; do
-  sleep 0.5
-done
+sleep 3
+open "http://localhost:5173" 2>/dev/null \
+  || xdg-open "http://localhost:5173" 2>/dev/null \
+  || echo "Open http://localhost:5173 in your browser"
 
-echo "🚀 Opening http://localhost:5173"
-open http://localhost:5173
-
-# Keep running until Ctrl-C
-trap "kill $DEV_PID 2>/dev/null; exit" INT TERM
 wait $DEV_PID

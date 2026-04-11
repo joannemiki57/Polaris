@@ -1,0 +1,287 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  deepAnswerChat,
+  deepAnswerInit,
+  type ChatMsg,
+  type DeepPaper,
+} from "./api";
+
+interface Props {
+  keyword: string;
+  ancestors: string[];
+  onBack: () => void;
+}
+
+function renderMarkdown(md: string): string {
+  return md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+    )
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    .replace(/^(\d+)\. (.+)$/gm, "<li>$2</li>")
+    .replace(/\n{2,}/g, "<br/><br/>")
+    .replace(/\n/g, "<br/>");
+}
+
+export function DeepAnswerPage({ keyword, ancestors, onBack }: Props) {
+  const searchKeyword = ancestors.length > 0
+    ? [...ancestors].reverse().concat(keyword).join(" ")
+    : keyword;
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [papers, setPapers] = useState<DeepPaper[]>([]);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending]);
+
+  const init = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await deepAnswerInit(searchKeyword);
+      setSessionId(res.sessionId);
+      setPapers(res.papers);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchKeyword]);
+
+  useEffect(() => {
+    init();
+  }, [init]);
+
+  const send = async () => {
+    if (!input.trim() || !sessionId || sending) return;
+    const userMsg: ChatMsg = { role: "user", text: input.trim() };
+    const history = [...messages];
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setSending(true);
+    try {
+      const { reply } = await deepAnswerChat(
+        sessionId,
+        searchKeyword,
+        userMsg.text,
+        history,
+      );
+      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: `Error: ${(e as Error).message}` },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+
+  return (
+    <div className="da-page">
+      <nav className="da-nav">
+        <button type="button" className="da-back" onClick={onBack}>
+          &larr; Back to Graph
+        </button>
+        <div className="da-breadcrumb">
+          <span className="da-crumb-dim">Deep Answer</span>
+          {[...ancestors].reverse().map((a) => (
+            <span key={a}>
+              <span className="da-crumb-sep">/</span>
+              <span className="da-crumb-dim">{a}</span>
+            </span>
+          ))}
+          <span className="da-crumb-sep">/</span>
+          <span className="da-crumb-node">{keyword}</span>
+        </div>
+        {papers.length > 0 && (
+          <span className="da-paper-badge">{papers.length} papers loaded</span>
+        )}
+      </nav>
+
+      <div className="da-body">
+        {/* Papers sidebar */}
+        <aside className="da-sidebar">
+          <h3 className="da-sidebar-title">Source Papers</h3>
+          {loading && <p className="da-sidebar-hint">Searching papers...</p>}
+          {error && <p className="da-sidebar-err">{error}</p>}
+          <ul className="da-paper-list">
+            {papers.map((p, i) => (
+              <li key={`${p.openAlexUrl}-${i}`} className="da-paper-item">
+                <div className="da-paper-rank">#{i + 1}</div>
+                <div className="da-paper-info">
+                  <a
+                    href={p.openAlexUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="da-paper-title"
+                  >
+                    {p.title}
+                  </a>
+                  <div className="da-paper-meta">
+                    {p.authors.slice(0, 3).join(", ")}
+                    {p.authors.length > 3 ? " et al." : ""}
+                    {p.year ? ` · ${p.year}` : ""}
+                  </div>
+                  <div className="da-paper-stats">
+                    {p.citedByCount != null && (
+                      <span className="da-cite-count">
+                        {p.citedByCount.toLocaleString()} citations
+                      </span>
+                    )}
+                    {p.doi && (
+                      <a
+                        href={p.doi}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="da-doi"
+                      >
+                        DOI
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {papers.length > 0 && (
+            <p className="da-attribution">
+              Data from{" "}
+              <a href="https://openalex.org" target="_blank" rel="noreferrer">
+                OpenAlex
+              </a>{" "}
+              · Review papers excluded
+            </p>
+          )}
+        </aside>
+
+        {/* Chat area */}
+        <main className="da-chat">
+          <div className="da-messages">
+            {loading && (
+              <div className="da-system-msg">
+                <div className="da-spinner" />
+                Searching for research papers about
+                <strong> "{searchKeyword}"</strong>...
+              </div>
+            )}
+
+            {!loading && papers.length > 0 && messages.length === 0 && (
+              <div className="da-system-msg">
+                <strong>{papers.length} research papers</strong> about "
+                {searchKeyword}" loaded (sorted by citation count, review papers
+                excluded).
+                <br />
+                <br />
+                Ask any question — the AI will answer based on the paper
+                contents.
+                <div className="da-suggestions">
+                  {[
+                    `What are the key approaches in ${keyword}?`,
+                    `What are the main challenges and limitations?`,
+                    `Summarize the most cited findings`,
+                  ].map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="da-suggestion"
+                      onClick={() => {
+                        setInput(q);
+                      }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!loading && papers.length === 0 && !error && (
+              <div className="da-system-msg da-empty">
+                No research papers found for "{searchKeyword}". Try a different node.
+              </div>
+            )}
+
+            {messages.map((m, i) => (
+              <div
+                key={`msg-${i}`}
+                className={`da-msg ${m.role === "user" ? "da-msg-user" : "da-msg-ai"}`}
+              >
+                <div className="da-msg-role">
+                  {m.role === "user" ? "You" : "AI Research Assistant"}
+                </div>
+                {m.role === "user" ? (
+                  <div className="da-msg-text">{m.text}</div>
+                ) : (
+                  <div
+                    className="da-msg-text da-rendered"
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdown(m.text),
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+
+            {sending && (
+              <div className="da-msg da-msg-ai">
+                <div className="da-msg-role">AI Research Assistant</div>
+                <div className="da-msg-text da-typing">
+                  <span className="da-dot" />
+                  <span className="da-dot" />
+                  <span className="da-dot" />
+                </div>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="da-input-bar">
+            <textarea
+              className="da-input"
+              placeholder={
+                loading
+                  ? "Loading papers..."
+                  : `Ask about "${searchKeyword}" — answers grounded in ${papers.length} papers`
+              }
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              disabled={loading || !sessionId}
+              rows={1}
+            />
+            <button
+              type="button"
+              className="da-send"
+              disabled={!input.trim() || sending || loading}
+              onClick={send}
+            >
+              Send
+            </button>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

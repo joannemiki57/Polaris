@@ -68,3 +68,47 @@ export async function attachPapers(
     body: JSON.stringify({ graph, keywordId, query }),
   });
 }
+
+/* ── Deep Answer (chat with papers) ── */
+
+export interface DeepPaper {
+  title: string;
+  authors: string[];
+  year: number | null;
+  doi: string | null;
+  citedByCount: number | null;
+  abstract: string | null;
+  openAlexUrl: string;
+}
+
+export interface DeepInitResponse {
+  sessionId: string;
+  keyword: string;
+  papers: DeepPaper[];
+}
+
+export interface ChatMsg {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export async function deepAnswerInit(
+  keyword: string,
+): Promise<DeepInitResponse> {
+  return j("/api/deep-answer/init", {
+    method: "POST",
+    body: JSON.stringify({ keyword }),
+  });
+}
+
+export async function deepAnswerChat(
+  sessionId: string,
+  keyword: string,
+  message: string,
+  history: ChatMsg[],
+): Promise<{ reply: string }> {
+  return j("/api/deep-answer/chat", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, keyword, message, history }),
+  });
+}

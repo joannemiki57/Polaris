@@ -1,17 +1,8 @@
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { GraphEdge, GraphNode, MindGraph } from "./graphTypes.js";
+import type { OpenAlexWorkDetailed } from "./openalex.js";
 
-function makeClient(apiKey: string, provider: "gemini" | "openai"): OpenAI {
-  if (provider === "gemini") {
-    return new OpenAI({
-      apiKey,
-      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-    });
-  }
-  return new OpenAI({ apiKey });
-}
-
-const EXPAND_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown):
+const EXPAND_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown fences):
 {
   "title": "short session title",
   "nodes": [
@@ -29,82 +20,6 @@ Rules:
 
 const DEEP_SYSTEM = `You are a careful tutor. Answer clearly in Markdown. If uncertain, say so. Do not invent paper titles.`;
 
-export interface PaperWithKeywords {
-  id: string;
-  title: string;
-  isReview: boolean;
-  citedByCount: number;
-  topics: { displayName: string; score: number; subfield: string }[];
-  abstract: string | null;
-}
-
-const ORGANIZE_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown):
-{
-  "title": "short session title",
-  "nodes": [
-    { "id": "stable_snake_id", "kind": "topic"|"keyword", "label": "...", "summary": "one sentence" }
-  ],
-  "edges": [
-    { "id": "e1", "source": "parent_id", "target": "child_id", "kind": "expands_to"|"prerequisite_for" }
-  ]
-}
-Rules:
-- Exactly one node with kind "topic" as the root concept for the user's question.
-- Extract specific, research-level keywords from the paper topics and abstracts.
-- Focus on SPECIFIC concepts (e.g., "differential privacy", "model aggregation", "gradient compression") NOT generic disciplines (e.g., "computer science", "engineering", "AI").
-- Group related keywords hierarchically under thematic branches.
-- Use "expands_to" edges for parent→child and "prerequisite_for" where logical.
-- Use ASCII snake_case ids derived from the keyword label.
-- Aim for 10–20 keyword nodes organized in 2–3 levels of depth.`;
-
-export async function organizeKeywordsToGraph(
-  apiKey: string,
-  question: string,
-  papers: PaperWithKeywords[],
-  model: string,
-  provider: "gemini" | "openai" = "openai",
-): Promise<MindGraph> {
-  function formatPaper(p: PaperWithKeywords): string {
-    const topics = p.topics
-      .map((t) => `${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
-      .join(", ");
-    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 400)}` : "";
-    return `- "${p.title}" [${p.citedByCount} citations]\n  Topics: ${topics || "(none)"}${abs}`;
-  }
-
-  const reviewSection = papers.filter((p) => p.isReview).map(formatPaper).join("\n");
-  const articleSection = papers.filter((p) => !p.isReview).map(formatPaper).join("\n");
-
-  const userContent = `Question: ${question}
-
-REVIEW PAPERS (literature reviews):
-${reviewSection || "(none found)"}
-
-TOP-CITED RESEARCH ARTICLES:
-${articleSection || "(none found)"}
-
-From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
-
-  const client = makeClient(apiKey, provider);
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.3,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "You organize real research concepts (from OpenAlex paper topics and abstracts) into a knowledge graph for UI rendering. " +
-          ORGANIZE_SCHEMA_HINT,
-      },
-      { role: "user", content: userContent },
-    ],
-  });
-  const text = completion.choices[0]?.message?.content;
-  if (!text) throw new Error("Empty LLM response");
-  return parseMindGraph(text);
-}
-
 function mockExpand(question: string): MindGraph {
   const rootId = "root_topic";
   const nodes: GraphNode[] = [
@@ -112,7 +27,7 @@ function mockExpand(question: string): MindGraph {
       id: rootId,
       kind: "topic",
       label: question.slice(0, 80) || "Topic",
-      summary: "Exploration root (offline mock — set OPENAI_API_KEY for live expansion).",
+      summary: "Exploration root (offline mock — set GEMINI_API_KEY for live expansion).",
     },
     {
       id: "kw_related",
@@ -147,8 +62,12 @@ function mockExpand(question: string): MindGraph {
   };
 }
 
+function stripFences(raw: string): string {
+  return raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+}
+
 function parseMindGraph(raw: string): MindGraph {
-  const data = JSON.parse(raw) as {
+  const data = JSON.parse(stripFences(raw)) as {
     title?: string;
     nodes?: GraphNode[];
     edges?: GraphEdge[];
@@ -165,35 +84,130 @@ function parseMindGraph(raw: string): MindGraph {
   };
 }
 
+function getGemini(apiKey: string, model: string) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  return genAI.getGenerativeModel({ model });
+}
+
 export async function expandQuestionToGraph(
   apiKey: string | undefined,
   question: string,
   model: string,
-  provider: "gemini" | "openai" = "openai",
 ): Promise<MindGraph> {
   if (!apiKey) return mockExpand(question);
 
-  const client = makeClient(apiKey, provider);
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.4,
-    response_format: { type: "json_object" },
-    messages: [
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
       {
-        role: "system",
-        content:
-          "You expand user questions into a concise knowledge graph for UI rendering. " +
-          EXPAND_SCHEMA_HINT,
+        role: "user",
+        parts: [
+          {
+            text:
+              "You expand user questions into a concise knowledge graph for UI rendering. " +
+              EXPAND_SCHEMA_HINT +
+              "\n\nUser question: " +
+              question,
+          },
+        ],
       },
-      { role: "user", content: question },
     ],
+    generationConfig: {
+      temperature: 0.4,
+      responseMimeType: "application/json",
+    },
   });
-  const text = completion.choices[0]?.message?.content;
-  if (!text) throw new Error("Empty LLM response");
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
   return parseMindGraph(text);
 }
 
-const DELTA_HINT = `Return ONLY valid JSON:
+/* ── Hybrid pipeline: organize real paper topics into a graph ── */
+
+export interface PaperWithKeywords {
+  id: string;
+  title: string;
+  isReview: boolean;
+  citedByCount: number;
+  topics: { displayName: string; score: number; subfield: string }[];
+  abstract: string | null;
+}
+
+const ORGANIZE_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown fences):
+{
+  "title": "short session title",
+  "nodes": [
+    { "id": "stable_snake_id", "kind": "topic"|"keyword", "label": "...", "summary": "one sentence" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "parent_id", "target": "child_id", "kind": "expands_to"|"prerequisite_for" }
+  ]
+}
+Rules:
+- Exactly one node with kind "topic" as the root concept for the user's question.
+- Extract specific, research-level keywords from the paper topics and abstracts.
+- Focus on SPECIFIC concepts (e.g., "differential privacy", "model aggregation", "gradient compression") NOT generic disciplines (e.g., "computer science", "engineering", "AI").
+- Group related keywords hierarchically under thematic branches.
+- Use "expands_to" edges for parent→child and "prerequisite_for" where logical.
+- Use ASCII snake_case ids derived from the keyword label.
+- Aim for 10–20 keyword nodes organized in 2–3 levels of depth.`;
+
+export async function organizeKeywordsToGraph(
+  apiKey: string,
+  question: string,
+  papers: PaperWithKeywords[],
+  model: string,
+): Promise<MindGraph> {
+  function formatPaper(p: PaperWithKeywords): string {
+    const topics = p.topics
+      .map((t) => `${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
+      .join(", ");
+    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 400)}` : "";
+    return `- "${p.title}" [${p.citedByCount} citations]\n  Topics: ${topics || "(none)"}${abs}`;
+  }
+
+  const reviewSection = papers.filter((p) => p.isReview).map(formatPaper).join("\n");
+  const articleSection = papers.filter((p) => !p.isReview).map(formatPaper).join("\n");
+
+  const userContent = `Question: ${question}
+
+REVIEW PAPERS (literature reviews):
+${reviewSection || "(none found)"}
+
+TOP-CITED RESEARCH ARTICLES:
+${articleSection || "(none found)"}
+
+From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
+
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text:
+              "You organize real research concepts (from OpenAlex paper topics and abstracts) into a knowledge graph for UI rendering. " +
+              ORGANIZE_SCHEMA_HINT +
+              "\n\n" +
+              userContent,
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.3,
+      responseMimeType: "application/json",
+    },
+  });
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
+  return parseMindGraph(text);
+}
+
+/* ── Delta expansion ── */
+
+const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
     { "id": "unique_id", "kind": "keyword"|"subtask", "label": "...", "summary": "one sentence" }
@@ -205,7 +219,7 @@ const DELTA_HINT = `Return ONLY valid JSON:
 Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.`;
 
 function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
-  const data = JSON.parse(raw) as {
+  const data = JSON.parse(stripFences(raw)) as {
     new_nodes?: GraphNode[];
     new_edges?: GraphEdge[];
   };
@@ -244,7 +258,6 @@ export async function expandFromSelection(
   selected: { id: string; label: string; kind: string }[],
   base: MindGraph,
   model: string,
-  provider: "gemini" | "openai" = "openai",
 ): Promise<MindGraph> {
   if (!apiKey) {
     const extra: GraphNode[] = selected.map((s, i) => ({
@@ -262,33 +275,155 @@ export async function expandFromSelection(
     return mergeDelta(base, { new_nodes: extra, new_edges: edges });
   }
 
-  const client = makeClient(apiKey, provider);
+  const gemini = getGemini(apiKey, model);
   const payload = JSON.stringify({
     originalQuestion: question,
     selected,
     existingNodeIds: base.nodes.map((n) => n.id),
   });
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.35,
-    response_format: { type: "json_object" },
-    messages: [
+  const result = await gemini.generateContent({
+    contents: [
       {
-        role: "system",
-        content:
-          "Given the user's question and SELECTED nodes from their graph, add focused child nodes. " +
-          DELTA_HINT,
+        role: "user",
+        parts: [
+          {
+            text:
+              "Given the user's question and SELECTED nodes from their graph, add focused child nodes. " +
+              DELTA_HINT +
+              "\n\n" +
+              payload,
+          },
+        ],
       },
-      { role: "user", content: payload },
     ],
+    generationConfig: {
+      temperature: 0.35,
+      responseMimeType: "application/json",
+    },
   });
-  const text = completion.choices[0]?.message?.content;
-  if (!text) throw new Error("Empty LLM response");
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
   const delta = parseDelta(text);
   return mergeDelta(base, delta);
 }
 
-// ── Paper section-keyword extraction ──────────────────────────
+/* ── Deep answer ── */
+
+export async function deepAnswer(
+  apiKey: string | undefined,
+  question: string,
+  selected: { id: string; label: string; summary?: string }[],
+  model: string,
+): Promise<string> {
+  const ctx = selected.map((s) => `- ${s.label}: ${s.summary ?? ""}`).join("\n");
+  const user = `Original question:\n${question}\n\nSelected focus:\n${ctx}\n\nGive a structured deep answer.`;
+
+  if (!apiKey) {
+    return (
+      `## Offline mode\n\n` +
+      `Set **GEMINI_API_KEY** on the server for live answers.\n\n` +
+      `### Focus\n${ctx || "(none)"}\n\n` +
+      `### Sketch\n- Define terms\n- Compare approaches\n- Note risks & evaluation\n`
+    );
+  }
+
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: DEEP_SYSTEM + "\n\n" + user }],
+      },
+    ],
+    generationConfig: { temperature: 0.5 },
+  });
+  return result.response.text() ?? "";
+}
+
+/* ── Deep Answer: chat grounded in papers ── */
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+function buildPaperContext(papers: OpenAlexWorkDetailed[]): string {
+  return papers
+    .map((p, i) => {
+      const authors = p.authorNames.length ? p.authorNames.join(", ") : "Unknown";
+      const lines = [
+        `[Paper ${i + 1}]`,
+        `Title: ${p.title ?? "Untitled"}`,
+        `Authors: ${authors}`,
+        `Year: ${p.publication_year ?? "Unknown"}`,
+        `Cited by: ${p.cited_by_count ?? 0}`,
+        p.doi ? `DOI: ${p.doi}` : null,
+        p.abstract ? `Abstract: ${p.abstract}` : null,
+      ];
+      return lines.filter(Boolean).join("\n");
+    })
+    .join("\n\n");
+}
+
+const CHAT_SYSTEM = (keyword: string, paperCtx: string) =>
+  `You are a research assistant specialized in "${keyword}".
+You have access to the following ${keyword}-related research papers. Ground ALL your answers in these papers.
+
+${paperCtx}
+
+Rules:
+- Answer in well-structured Markdown.
+- Cite papers inline like (AuthorLastName et al., Year) when referencing findings.
+- If a question cannot be answered from the provided papers, say so clearly.
+- Do NOT invent facts or paper titles.
+- Be thorough but concise. Organize long answers with headings and bullet points.`;
+
+export async function chatWithPapers(
+  apiKey: string | undefined,
+  keyword: string,
+  papers: OpenAlexWorkDetailed[],
+  history: ChatMessage[],
+  userMessage: string,
+  model: string,
+): Promise<string> {
+  const paperCtx = buildPaperContext(papers);
+
+  if (!apiKey) {
+    return (
+      `## Offline mode\n\n` +
+      `Set **GEMINI_API_KEY** to enable AI answers grounded in ${papers.length} papers about "${keyword}".\n\n` +
+      `Your question: ${userMessage}`
+    );
+  }
+
+  const gemini = getGemini(apiKey, model);
+  const contents = [
+    {
+      role: "user" as const,
+      parts: [{ text: CHAT_SYSTEM(keyword, paperCtx) + "\n\nAcknowledge you have the papers ready." }],
+    },
+    {
+      role: "model" as const,
+      parts: [{ text: `I have ${papers.length} research papers about "${keyword}" loaded and ready. Ask me anything about this topic and I'll answer based on the paper contents.` }],
+    },
+    ...history.map((m) => ({
+      role: (m.role === "user" ? "user" : "model") as "user" | "model",
+      parts: [{ text: m.text }],
+    })),
+    {
+      role: "user" as const,
+      parts: [{ text: userMessage }],
+    },
+  ];
+
+  const result = await gemini.generateContent({
+    contents,
+    generationConfig: { temperature: 0.4 },
+  });
+  return result.response.text() ?? "";
+}
+
+/* ── Paper section-keyword extraction ── */
 
 export interface PaperDetail {
   title: string;
@@ -296,7 +431,7 @@ export interface PaperDetail {
   abstract: string | null;
 }
 
-const SECTION_KW_HINT = `Return ONLY valid JSON with this shape (no markdown):
+const SECTION_KW_HINT = `Return ONLY valid JSON with this shape (no markdown fences):
 {
   "keywords": [
     { "id": "snake_case_id", "label": "Short Label", "summary": "one sentence description" }
@@ -315,7 +450,6 @@ export async function extractPaperSectionKeywords(
   apiKey: string,
   paper: PaperDetail,
   model: string,
-  provider: "gemini" | "openai" = "openai",
 ): Promise<{ id: string; label: string; summary: string }[]> {
   const topicList = paper.topics
     .map((t) => `- ${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
@@ -332,56 +466,31 @@ ${abs}
 
 Extract the specific section-level research concepts this paper covers. What would the section headings (2.1, 2.2, 3.1, etc.) of this paper be about?`;
 
-  const client = makeClient(apiKey, provider);
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
+  const gemini = getGemini(apiKey, model);
+  const result = await gemini.generateContent({
+    contents: [
       {
-        role: "system",
-        content:
-          "You extract section-level research keywords from academic papers based on their title, topics, and abstract. " +
-          SECTION_KW_HINT,
+        role: "user",
+        parts: [
+          {
+            text:
+              "You extract section-level research keywords from academic papers based on their title, topics, and abstract. " +
+              SECTION_KW_HINT +
+              "\n\n" +
+              userContent,
+          },
+        ],
       },
-      { role: "user", content: userContent },
     ],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
+    },
   });
-  const text = completion.choices[0]?.message?.content;
-  if (!text) throw new Error("Empty LLM response");
-  const data = JSON.parse(text) as {
+  const text = result.response.text();
+  if (!text) throw new Error("Empty Gemini response");
+  const data = JSON.parse(stripFences(text)) as {
     keywords?: { id: string; label: string; summary: string }[];
   };
   return Array.isArray(data.keywords) ? data.keywords : [];
-}
-
-export async function deepAnswer(
-  apiKey: string | undefined,
-  question: string,
-  selected: { id: string; label: string; summary?: string }[],
-  model: string,
-  provider: "gemini" | "openai" = "openai",
-): Promise<string> {
-  const ctx = selected.map((s) => `- ${s.label}: ${s.summary ?? ""}`).join("\n");
-  const user = `Original question:\n${question}\n\nSelected focus:\n${ctx}\n\nGive a structured deep answer.`;
-
-  if (!apiKey) {
-    return (
-      `## Offline mode\n\n` +
-      `Set **GEMINI_API_KEY** or **OPENAI_API_KEY** on the server for live answers.\n\n` +
-      `### Focus\n${ctx || "(none)"}\n\n` +
-      `### Sketch\n- Define terms\n- Compare approaches\n- Note risks & evaluation\n`
-    );
-  }
-
-  const client = makeClient(apiKey, provider);
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.5,
-    messages: [
-      { role: "system", content: DEEP_SYSTEM },
-      { role: "user", content: user },
-    ],
-  });
-  return completion.choices[0]?.message?.content ?? "";
 }

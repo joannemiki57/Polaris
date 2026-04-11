@@ -7,14 +7,24 @@ import rateLimit from "express-rate-limit";
 import type { GraphEdge, MindGraph } from "./graphTypes.js";
 import type { PaperWithKeywords } from "./llm.js";
 import {
+  chatWithPapers,
   deepAnswer,
   expandFromSelection,
   expandQuestionToGraph,
   extractPaperSectionKeywords,
   mergeDelta,
   organizeKeywordsToGraph,
+  type ChatMessage,
 } from "./llm.js";
-import { fetchWorkDetail, fetchWorkKeywords, keywordsToGraphNodes, searchWorks, workHitToPaperNodes } from "./openalex.js";
+import {
+  fetchWorkDetail,
+  fetchWorkKeywords,
+  keywordsToGraphNodes,
+  searchResearchPapers,
+  searchWorks,
+  workHitToPaperNodes,
+} from "./openalex.js";
+import type { OpenAlexWorkDetailed } from "./openalex.js";
 import { fetchPaperSections, sectionsToGraphNodes } from "./semanticScholar.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,9 +33,8 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8787;
-const LLM_KEY = process.env.GEMINI_API_KEY ?? process.env.OPENAI_API_KEY;
-const LLM_MODEL = process.env.GEMINI_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini";
-const LLM_PROVIDER: "gemini" | "openai" = process.env.GEMINI_API_KEY ? "gemini" : "openai";
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
 const S2_API_KEY = process.env.S2_API_KEY;
 
@@ -63,8 +72,7 @@ const strictLimiter = rateLimit({
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    llm: Boolean(LLM_KEY),
-    llmProvider: LLM_PROVIDER,
+    llm: Boolean(GEMINI_KEY),
     openAlexMailto: Boolean(OPENALEX_MAILTO),
   });
 });
@@ -103,19 +111,18 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
 
     // LLM organizes topics + abstracts into a tree (or fallback to pure LLM if no key)
     let keywordGraph: MindGraph;
-    if (LLM_KEY && papersWithKeywords.some((p) => p.topics.length > 0 || p.abstract)) {
+    if (GEMINI_KEY && papersWithKeywords.some((p) => p.topics.length > 0 || p.abstract)) {
       keywordGraph = await organizeKeywordsToGraph(
-        LLM_KEY, question, papersWithKeywords, LLM_MODEL, LLM_PROVIDER,
+        GEMINI_KEY, question, papersWithKeywords, GEMINI_MODEL,
       );
     } else {
-      keywordGraph = await expandQuestionToGraph(LLM_KEY, question, LLM_MODEL, LLM_PROVIDER);
+      keywordGraph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
     }
 
     // Build paper nodes and attach them to the root topic
     const rootNode = keywordGraph.nodes.find((n) => n.kind === "topic");
     const rootId = rootNode?.id ?? keywordGraph.nodes[0]?.id ?? "root";
     const { nodes: paperNodes, edgeTargets } = workHitToPaperNodes(allHits, rootId);
-    // Mark review papers
     for (const pn of paperNodes) {
       const hit = allHits.find((h) => h.id === pn.openAlexId);
       if (hit?.type === "review") pn.isReview = true;
@@ -151,12 +158,11 @@ app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
       return;
     }
     const graph = await expandFromSelection(
-      LLM_KEY,
+      GEMINI_KEY,
       question,
       selected,
       base,
-      LLM_MODEL,
-      LLM_PROVIDER,
+      GEMINI_MODEL,
     );
     res.json({ graph });
   } catch (e) {
@@ -175,8 +181,70 @@ app.post("/api/llm/deep", strictLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const text = await deepAnswer(LLM_KEY, question, selected ?? [], LLM_MODEL, LLM_PROVIDER);
+    const text = await deepAnswer(GEMINI_KEY, question, selected ?? [], GEMINI_MODEL);
     res.json({ markdown: text });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// In-memory store for paper sessions (per keyword)
+const paperSessions = new Map<string, OpenAlexWorkDetailed[]>();
+
+app.post("/api/deep-answer/init", strictLimiter, async (req, res) => {
+  try {
+    const keyword = String(req.body?.keyword ?? "").trim();
+    if (!keyword) {
+      res.status(400).json({ error: "keyword required" });
+      return;
+    }
+    const papers = await searchResearchPapers(keyword, OPENALEX_MAILTO, 10);
+    const sessionId = `${keyword}_${Date.now()}`;
+    paperSessions.set(sessionId, papers);
+
+    const paperList = papers.map((p) => ({
+      title: p.title ?? "Untitled",
+      authors: p.authorNames,
+      year: p.publication_year,
+      doi: p.doi,
+      citedByCount: p.cited_by_count,
+      abstract: p.abstract,
+      openAlexUrl: p.id.startsWith("http") ? p.id : `https://openalex.org/${p.id}`,
+    }));
+
+    res.json({ sessionId, keyword, papers: paperList });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/deep-answer/chat", strictLimiter, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId ?? "").trim();
+    const keyword = String(req.body?.keyword ?? "").trim();
+    const message = String(req.body?.message ?? "").trim();
+    const history = (req.body?.history ?? []) as ChatMessage[];
+
+    if (!sessionId || !keyword || !message) {
+      res.status(400).json({ error: "sessionId, keyword, and message required" });
+      return;
+    }
+    const papers = paperSessions.get(sessionId);
+    if (!papers) {
+      res.status(404).json({ error: "Session expired or not found. Please re-init." });
+      return;
+    }
+    const reply = await chatWithPapers(
+      GEMINI_KEY,
+      keyword,
+      papers,
+      history,
+      message,
+      GEMINI_MODEL,
+    );
+    res.json({ reply });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });
@@ -219,9 +287,9 @@ app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
     const detail = await fetchWorkDetail(paperNode.openAlexId, OPENALEX_MAILTO);
 
     // LLM path: extract section-level keywords from topics + abstract
-    if (LLM_KEY && (detail.topics.length > 0 || detail.abstract)) {
+    if (GEMINI_KEY && (detail.topics.length > 0 || detail.abstract)) {
       const sectionKws = await extractPaperSectionKeywords(
-        LLM_KEY,
+        GEMINI_KEY,
         {
           title: paperNode.label,
           topics: detail.topics.map((t) => ({
@@ -231,8 +299,7 @@ app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
           })),
           abstract: detail.abstract,
         },
-        LLM_MODEL,
-        LLM_PROVIDER,
+        GEMINI_MODEL,
       );
       if (sectionKws.length > 0) {
         const existingIds = new Set(base.nodes.map((n) => n.id));
@@ -256,7 +323,7 @@ app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
       }
     }
 
-    // Fallback: raw OpenAlex keywords (if no LLM key or LLM returned nothing)
+    // Fallback: raw OpenAlex keywords
     const keywords = detail.keywords;
     if (keywords.length === 0) {
       res.json({ graph: base });
@@ -343,5 +410,5 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`API http://localhost:${PORT} [${LLM_PROVIDER}/${LLM_MODEL}]`);
+  console.log(`API http://localhost:${PORT} [gemini/${GEMINI_MODEL}]`);
 });

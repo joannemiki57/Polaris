@@ -129,6 +129,74 @@ export async function searchWorks(
   return hits;
 }
 
+export interface OpenAlexWorkDetailed extends OpenAlexWorkHit {
+  abstract: string | null;
+  authorNames: string[];
+}
+
+function reconstructAbstract(
+  invertedIndex: Record<string, number[]> | null | undefined,
+): string | null {
+  if (!invertedIndex || typeof invertedIndex !== "object") return null;
+  const pairs: [string, number][] = [];
+  for (const [word, positions] of Object.entries(invertedIndex)) {
+    for (const pos of positions) pairs.push([word, pos]);
+  }
+  pairs.sort((a, b) => a[1] - b[1]);
+  return pairs.map(([w]) => w).join(" ") || null;
+}
+
+export async function searchResearchPapers(
+  query: string,
+  mailto: string | undefined,
+  perPage = 10,
+): Promise<OpenAlexWorkDetailed[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const params = new URLSearchParams({
+    search: query,
+    per_page: String(perPage),
+    sort: "cited_by_count:desc",
+    filter: "type:article,type:!review",
+  });
+  if (mailto) params.set("mailto", mailto);
+
+  const url = `${BASE}/works?${params.toString()}`;
+  const uaMail = mailto ?? "anonymous@example.com";
+  const res = await fetch(url, {
+    headers: { "User-Agent": `MindGraphOpenAlex/1.0 (mailto:${uaMail})` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenAlex ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as {
+    results?: Array<{
+      id: string;
+      title: string | null;
+      publication_year: number | null;
+      cited_by_count: number | null;
+      doi: string | null;
+      abstract_inverted_index?: Record<string, number[]> | null;
+      authorships?: Array<{ author?: { display_name?: string } }>;
+    }>;
+  };
+  return (json.results ?? []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    publication_year: r.publication_year,
+    cited_by_count: r.cited_by_count,
+    doi: r.doi,
+    type: "article" as string | null,
+    abstract: reconstructAbstract(r.abstract_inverted_index),
+    authorNames: (r.authorships ?? [])
+      .map((a) => a.author?.display_name)
+      .filter((n): n is string => Boolean(n))
+      .slice(0, 5),
+  }));
+}
+
 export function workHitToPaperNodes(
   hits: OpenAlexWorkHit[],
   attachToId: string,
@@ -158,16 +226,6 @@ export function workHitToPaperNodes(
 
 const MAX_KEYWORDS = 15;
 const MAX_TOPICS = 10;
-
-function reconstructAbstract(invertedIndex: Record<string, number[]> | null): string | null {
-  if (!invertedIndex) return null;
-  const words: Record<number, string> = {};
-  for (const [word, positions] of Object.entries(invertedIndex)) {
-    for (const pos of positions) words[pos] = word;
-  }
-  const sorted = Object.keys(words).map(Number).sort((a, b) => a - b);
-  return sorted.map((i) => words[i]).join(" ");
-}
 
 export async function fetchWorkDetail(
   openAlexId: string,
