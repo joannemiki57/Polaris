@@ -4,6 +4,7 @@ export type EdgeKind =
   | "expands_to"
   | "prerequisite_for"
   | "from_openalex"
+  | "has_keyword"
   | "user_linked";
 
 export interface GraphNode {
@@ -16,6 +17,8 @@ export interface GraphNode {
   year?: number;
   citedByCount?: number;
   url?: string;
+  relevance?: number;
+  isReview?: boolean;
 }
 
 export interface GraphEdge {

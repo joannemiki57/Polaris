@@ -205,6 +205,31 @@ button:disabled {
   letter-spacing: 0.04em;
   color: #94a3b8;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mind-relevance {
+  font-size: 9px;
+  background: #0d9488;
+  color: #f0fdfa;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.mind-review-badge {
+  font-size: 9px;
+  background: #d97706;
+  color: #fffbeb;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
 }
 
 .mind-label {

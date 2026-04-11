@@ -1,6 +1,16 @@
 import OpenAI from "openai";
 import type { GraphEdge, GraphNode, MindGraph } from "./graphTypes.js";
 
+function makeClient(apiKey: string, provider: "gemini" | "openai"): OpenAI {
+  if (provider === "gemini") {
+    return new OpenAI({
+      apiKey,
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    });
+  }
+  return new OpenAI({ apiKey });
+}
+
 const EXPAND_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown):
 {
   "title": "short session title",
@@ -18,6 +28,82 @@ Rules:
 - Use ASCII ids like fl_privacy, secure_aggregation.`;
 
 const DEEP_SYSTEM = `You are a careful tutor. Answer clearly in Markdown. If uncertain, say so. Do not invent paper titles.`;
+
+export interface PaperWithKeywords {
+  id: string;
+  title: string;
+  isReview: boolean;
+  citedByCount: number;
+  topics: { displayName: string; score: number; subfield: string }[];
+  abstract: string | null;
+}
+
+const ORGANIZE_SCHEMA_HINT = `Return ONLY valid JSON with this shape (no markdown):
+{
+  "title": "short session title",
+  "nodes": [
+    { "id": "stable_snake_id", "kind": "topic"|"keyword", "label": "...", "summary": "one sentence" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "parent_id", "target": "child_id", "kind": "expands_to"|"prerequisite_for" }
+  ]
+}
+Rules:
+- Exactly one node with kind "topic" as the root concept for the user's question.
+- Extract specific, research-level keywords from the paper topics and abstracts.
+- Focus on SPECIFIC concepts (e.g., "differential privacy", "model aggregation", "gradient compression") NOT generic disciplines (e.g., "computer science", "engineering", "AI").
+- Group related keywords hierarchically under thematic branches.
+- Use "expands_to" edges for parent→child and "prerequisite_for" where logical.
+- Use ASCII snake_case ids derived from the keyword label.
+- Aim for 10–20 keyword nodes organized in 2–3 levels of depth.`;
+
+export async function organizeKeywordsToGraph(
+  apiKey: string,
+  question: string,
+  papers: PaperWithKeywords[],
+  model: string,
+  provider: "gemini" | "openai" = "openai",
+): Promise<MindGraph> {
+  function formatPaper(p: PaperWithKeywords): string {
+    const topics = p.topics
+      .map((t) => `${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
+      .join(", ");
+    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 400)}` : "";
+    return `- "${p.title}" [${p.citedByCount} citations]\n  Topics: ${topics || "(none)"}${abs}`;
+  }
+
+  const reviewSection = papers.filter((p) => p.isReview).map(formatPaper).join("\n");
+  const articleSection = papers.filter((p) => !p.isReview).map(formatPaper).join("\n");
+
+  const userContent = `Question: ${question}
+
+REVIEW PAPERS (literature reviews):
+${reviewSection || "(none found)"}
+
+TOP-CITED RESEARCH ARTICLES:
+${articleSection || "(none found)"}
+
+From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
+
+  const client = makeClient(apiKey, provider);
+  const completion = await client.chat.completions.create({
+    model,
+    temperature: 0.3,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You organize real research concepts (from OpenAlex paper topics and abstracts) into a knowledge graph for UI rendering. " +
+          ORGANIZE_SCHEMA_HINT,
+      },
+      { role: "user", content: userContent },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error("Empty LLM response");
+  return parseMindGraph(text);
+}
 
 function mockExpand(question: string): MindGraph {
   const rootId = "root_topic";
@@ -83,10 +169,11 @@ export async function expandQuestionToGraph(
   apiKey: string | undefined,
   question: string,
   model: string,
+  provider: "gemini" | "openai" = "openai",
 ): Promise<MindGraph> {
   if (!apiKey) return mockExpand(question);
 
-  const client = new OpenAI({ apiKey });
+  const client = makeClient(apiKey, provider);
   const completion = await client.chat.completions.create({
     model,
     temperature: 0.4,
@@ -157,6 +244,7 @@ export async function expandFromSelection(
   selected: { id: string; label: string; kind: string }[],
   base: MindGraph,
   model: string,
+  provider: "gemini" | "openai" = "openai",
 ): Promise<MindGraph> {
   if (!apiKey) {
     const extra: GraphNode[] = selected.map((s, i) => ({
@@ -174,7 +262,7 @@ export async function expandFromSelection(
     return mergeDelta(base, { new_nodes: extra, new_edges: edges });
   }
 
-  const client = new OpenAI({ apiKey });
+  const client = makeClient(apiKey, provider);
   const payload = JSON.stringify({
     originalQuestion: question,
     selected,
@@ -205,6 +293,7 @@ export async function deepAnswer(
   question: string,
   selected: { id: string; label: string; summary?: string }[],
   model: string,
+  provider: "gemini" | "openai" = "openai",
 ): Promise<string> {
   const ctx = selected.map((s) => `- ${s.label}: ${s.summary ?? ""}`).join("\n");
   const user = `Original question:\n${question}\n\nSelected focus:\n${ctx}\n\nGive a structured deep answer.`;
@@ -212,13 +301,13 @@ export async function deepAnswer(
   if (!apiKey) {
     return (
       `## Offline mode\n\n` +
-      `Set **OPENAI_API_KEY** on the server for live answers.\n\n` +
+      `Set **GEMINI_API_KEY** or **OPENAI_API_KEY** on the server for live answers.\n\n` +
       `### Focus\n${ctx || "(none)"}\n\n` +
       `### Sketch\n- Define terms\n- Compare approaches\n- Note risks & evaluation\n`
     );
   }
 
-  const client = new OpenAI({ apiKey });
+  const client = makeClient(apiKey, provider);
   const completion = await client.chat.completions.create({
     model,
     temperature: 0.5,

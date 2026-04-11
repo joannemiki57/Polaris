@@ -5,12 +5,15 @@ import dotenv from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import type { GraphEdge, MindGraph } from "./graphTypes.js";
+import type { PaperWithKeywords } from "./llm.js";
 import {
   deepAnswer,
   expandFromSelection,
   expandQuestionToGraph,
+  mergeDelta,
+  organizeKeywordsToGraph,
 } from "./llm.js";
-import { searchWorks, workHitToPaperNodes } from "./openalex.js";
+import { fetchWorkDetail, fetchWorkKeywords, keywordsToGraphNodes, searchWorks, workHitToPaperNodes } from "./openalex.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, "../.env") });
@@ -18,8 +21,9 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8787;
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const LLM_KEY = process.env.GEMINI_API_KEY ?? process.env.OPENAI_API_KEY;
+const LLM_MODEL = process.env.GEMINI_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const LLM_PROVIDER: "gemini" | "openai" = process.env.GEMINI_API_KEY ? "gemini" : "openai";
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
 
 app.use(cors({ origin: true }));
@@ -56,7 +60,8 @@ const strictLimiter = rateLimit({
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    llm: Boolean(OPENAI_KEY),
+    llm: Boolean(LLM_KEY),
+    llmProvider: LLM_PROVIDER,
     openAlexMailto: Boolean(OPENALEX_MAILTO),
   });
 });
@@ -68,7 +73,58 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const graph = await expandQuestionToGraph(OPENAI_KEY, question, OPENAI_MODEL);
+
+    // Hybrid pipeline: fetch real papers, then let LLM organize their topics+abstracts
+    const [reviews, articles] = await Promise.all([
+      searchWorks(question, OPENALEX_MAILTO, 3, "review"),
+      searchWorks(question, OPENALEX_MAILTO, 3, "article"),
+    ]);
+    const allHits = [...reviews, ...articles];
+
+    // Fetch topics + abstracts for each paper in parallel
+    const papersWithKeywords: PaperWithKeywords[] = await Promise.all(
+      allHits.map(async (h) => {
+        const detail = await fetchWorkDetail(h.id, OPENALEX_MAILTO);
+        return {
+          id: h.id,
+          title: h.title ?? "Untitled",
+          isReview: h.type === "review",
+          citedByCount: h.cited_by_count ?? 0,
+          topics: detail.topics.map((t) => ({
+            displayName: t.displayName, score: t.score, subfield: t.subfield,
+          })),
+          abstract: detail.abstract,
+        };
+      }),
+    );
+
+    // LLM organizes topics + abstracts into a tree (or fallback to pure LLM if no key)
+    let keywordGraph: MindGraph;
+    if (LLM_KEY && papersWithKeywords.some((p) => p.topics.length > 0 || p.abstract)) {
+      keywordGraph = await organizeKeywordsToGraph(
+        LLM_KEY, question, papersWithKeywords, LLM_MODEL, LLM_PROVIDER,
+      );
+    } else {
+      keywordGraph = await expandQuestionToGraph(LLM_KEY, question, LLM_MODEL, LLM_PROVIDER);
+    }
+
+    // Build paper nodes and attach them to the root topic
+    const rootNode = keywordGraph.nodes.find((n) => n.kind === "topic");
+    const rootId = rootNode?.id ?? keywordGraph.nodes[0]?.id ?? "root";
+    const { nodes: paperNodes, edgeTargets } = workHitToPaperNodes(allHits, rootId);
+    // Mark review papers
+    for (const pn of paperNodes) {
+      const hit = allHits.find((h) => h.id === pn.openAlexId);
+      if (hit?.type === "review") pn.isReview = true;
+    }
+    const paperEdges: GraphEdge[] = edgeTargets.map((t, i) => ({
+      id: `init_${t.paperId}_${i}`,
+      source: t.sourceId,
+      target: t.paperId,
+      kind: "from_openalex",
+    }));
+
+    const graph = mergeDelta(keywordGraph, { new_nodes: paperNodes, new_edges: paperEdges });
     res.json({ graph });
   } catch (e) {
     console.error(e);
@@ -92,11 +148,12 @@ app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
       return;
     }
     const graph = await expandFromSelection(
-      OPENAI_KEY,
+      LLM_KEY,
       question,
       selected,
       base,
-      OPENAI_MODEL,
+      LLM_MODEL,
+      LLM_PROVIDER,
     );
     res.json({ graph });
   } catch (e) {
@@ -115,7 +172,7 @@ app.post("/api/llm/deep", strictLimiter, async (req, res) => {
       res.status(400).json({ error: "question required" });
       return;
     }
-    const text = await deepAnswer(OPENAI_KEY, question, selected ?? [], OPENAI_MODEL);
+    const text = await deepAnswer(LLM_KEY, question, selected ?? [], LLM_MODEL, LLM_PROVIDER);
     res.json({ markdown: text });
   } catch (e) {
     console.error(e);
@@ -138,7 +195,37 @@ app.get("/api/openalex/works", strictLimiter, async (req, res) => {
   }
 });
 
-/** Merge paper nodes + edges into an existing graph client-side; server can also return merged graph */
+app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
+  try {
+    const base = req.body?.graph as MindGraph | undefined;
+    const paperNodeId = String(req.body?.paperNodeId ?? "").trim();
+    if (!base || !Array.isArray(base.nodes)) {
+      res.status(400).json({ error: "graph with nodes required" });
+      return;
+    }
+    if (!paperNodeId) {
+      res.status(400).json({ error: "paperNodeId required" });
+      return;
+    }
+    const paperNode = base.nodes.find((n) => n.id === paperNodeId);
+    if (!paperNode?.openAlexId) {
+      res.status(400).json({ error: "paper node not found or missing openAlexId" });
+      return;
+    }
+    const keywords = await fetchWorkKeywords(paperNode.openAlexId, OPENALEX_MAILTO);
+    if (keywords.length === 0) {
+      res.json({ graph: base });
+      return;
+    }
+    const { nodes: kwNodes, edges: kwEdges } = keywordsToGraphNodes(keywords, paperNodeId);
+    const graph = mergeDelta(base, { new_nodes: kwNodes, new_edges: kwEdges });
+    res.json({ graph });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
   try {
     const base = req.body?.graph as MindGraph | undefined;
@@ -175,5 +262,5 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`API http://localhost:${PORT}`);
+  console.log(`API http://localhost:${PORT} [${LLM_PROVIDER}/${LLM_MODEL}]`);
 });

@@ -1,0 +1,132 @@
+# Federated Learning Ecosystem
+
+> Question: federated learning
+
+## Nodes
+- **Federated Learning** (`topic`, id: `federated_learning`)
+  - A distributed machine learning approach enabling model training on decentralized datasets without direct data sharing.
+- **Machine Learning** (`keyword`, id: `machine_learning`)
+  - A field of artificial intelligence that enables systems to learn from data without explicit programming.
+- **Computer Security** (`keyword`, id: `computer_security`)
+  - Protection of computer systems and networks from unauthorized access, use, disclosure, disruption, modification, or destruction.
+- **Internet of Things** (`keyword`, id: `internet_of_things`)
+  - A network of physical objects embedded with sensors, software, and other technologies for connecting and exchanging data over the internet.
+- **Personalized Medicine** (`keyword`, id: `personalized_medicine`)
+  - A medical model that customizes healthcare, with decisions and treatments tailored to the individual patient.
+- **Deep Learning** (`keyword`, id: `deep_learning`)
+  - A subset of machine learning that uses artificial neural networks with multiple layers to learn representations of data.
+- **Transfer of Learning** (`keyword`, id: `transfer_of_learning`)
+  - A machine learning technique where a model developed for a task is reused as the starting point for a model on a second task.
+- **Convolutional Neural Network** (`keyword`, id: `convolutional_neural_network`)
+  - A class of deep neural networks, most commonly applied to analyzing visual imagery.
+- **Explainable Artificial Intelligence** (`keyword`, id: `explainable_artificial_intelligence`)
+  - A set of tools and techniques that allows users to understand and trust the output of artificial intelligence algorithms.
+- **Medical Imaging** (`keyword`, id: `medical_imaging`)
+  - The technique and process of creating visual representations of the interior of a body for clinical analysis and medical intervention.
+- **Radiomics** (`keyword`, id: `radiomics`)
+  - The extraction of numerous quantitative features from medical images using data-characterization algorithms.
+- **Artificial Intelligence** (`keyword`, id: `artificial_intelligence`)
+  - The simulation of human intelligence processes by machines, especially computer systems.
+- **Data Science** (`keyword`, id: `data_science`)
+  - An interdisciplinary field that uses scientific methods, processes, algorithms and systems to extract knowledge and insights from data.
+- **Big Data** (`keyword`, id: `big_data`)
+  - Extremely large data sets that may be analyzed computationally to reveal patterns, trends, and associations.
+- **Computer Science** (`keyword`, id: `computer_science`)
+  - The study of computation and information, including theoretical foundations, algorithms, and practical applications.
+- **Cloud Computing** (`keyword`, id: `cloud_computing`)
+  - The on-demand availability of computer system resources, especially data storage and computing power, without direct active management by the user.
+- **Radiomics: the bridge between medical imaging and personalized medicine** (`paper`, id: `paper_W2763355946`)
+  - DOI: https://doi.org/10.1038/nrclinonc.2017.141
+  - OpenAlex: https://openalex.org/W2763355946
+  - https://openalex.org/W2763355946
+- **A Survey of Convolutional Neural Networks: Analysis, Applications, and Prospects** (`paper`, id: `paper_W3168997536`)
+  - DOI: https://doi.org/10.1109/tnnls.2021.3084827
+  - OpenAlex: https://openalex.org/W3168997536
+  - https://openalex.org/W3168997536
+- **The Human Connectome: A Structural Description of the Human Brain** (`paper`, id: `paper_W2146693559`)
+  - DOI: https://doi.org/10.1371/journal.pcbi.0010042
+  - OpenAlex: https://openalex.org/W2146693559
+  - https://openalex.org/W2146693559
+- **Explainable Artificial Intelligence (XAI): Concepts, taxonomies, opportunities and challenges toward responsible AI** (`paper`, id: `paper_W2981731882`)
+  - DOI: https://doi.org/10.1016/j.inffus.2019.12.012
+  - OpenAlex: https://openalex.org/W2981731882
+  - https://openalex.org/W2981731882
+- **Internet of Things: A Survey on Enabling Technologies, Protocols, and Applications** (`paper`, id: `paper_W2134295053`)
+  - DOI: https://doi.org/10.1109/comst.2015.2444095
+  - OpenAlex: https://openalex.org/W2134295053
+  - https://openalex.org/W2134295053
+- **Federated Machine Learning** (`paper`, id: `paper_W2912213068`)
+  - DOI: https://doi.org/10.1145/3298981
+  - OpenAlex: https://openalex.org/W2912213068
+  - https://openalex.org/W2912213068
+- **Computer science** (`keyword`, id: `kw_computer_science`)
+  - Relevance: 71%
+  - OpenAlex: https://openalex.org/keywords/computer-science
+- **Artificial intelligence** (`keyword`, id: `kw_artificial_intelligence`)
+  - Relevance: 69%
+  - OpenAlex: https://openalex.org/keywords/artificial-intelligence
+- **Taxonomy (biology)** (`keyword`, id: `kw_taxonomy`)
+  - Relevance: 60%
+  - OpenAlex: https://openalex.org/keywords/taxonomy
+- **Field (mathematics)** (`keyword`, id: `kw_field`)
+  - Relevance: 60%
+  - OpenAlex: https://openalex.org/keywords/field
+- **Software deployment** (`keyword`, id: `kw_software_deployment`)
+  - Relevance: 48%
+  - OpenAlex: https://openalex.org/keywords/software-deployment
+- **Data science** (`keyword`, id: `kw_data_science`)
+  - Relevance: 47%
+  - OpenAlex: https://openalex.org/keywords/data-science
+- **Deep learning** (`keyword`, id: `kw_deep_learning`)
+  - Relevance: 47%
+  - OpenAlex: https://openalex.org/keywords/deep-learning
+- **Machine learning** (`keyword`, id: `kw_machine_learning`)
+  - Relevance: 38%
+  - OpenAlex: https://openalex.org/keywords/machine-learning
+- **Management science** (`keyword`, id: `kw_management_science`)
+  - Relevance: 33%
+  - OpenAlex: https://openalex.org/keywords/management-science
+- **Software engineering** (`keyword`, id: `kw_software_engineering`)
+  - Relevance: 9%
+  - OpenAlex: https://openalex.org/keywords/software-engineering
+- **Engineering** (`keyword`, id: `kw_engineering`)
+  - Relevance: 8%
+  - OpenAlex: https://openalex.org/keywords/engineering
+
+## Edges
+- `federated_learning` —expands_to→ `machine_learning`
+- `federated_learning` —expands_to→ `computer_security`
+- `federated_learning` —expands_to→ `internet_of_things`
+- `federated_learning` —expands_to→ `personalized_medicine`
+- `machine_learning` —expands_to→ `deep_learning`
+- `machine_learning` —expands_to→ `transfer_of_learning`
+- `machine_learning` —expands_to→ `convolutional_neural_network`
+- `machine_learning` —expands_to→ `explainable_artificial_intelligence`
+- `personalized_medicine` —expands_to→ `medical_imaging`
+- `medical_imaging` —expands_to→ `radiomics`
+- `artificial_intelligence` —prerequisite_for→ `machine_learning`
+- `data_science` —prerequisite_for→ `machine_learning`
+- `data_science` —expands_to→ `big_data`
+- `computer_science` —prerequisite_for→ `artificial_intelligence`
+- `computer_science` —prerequisite_for→ `data_science`
+- `computer_science` —prerequisite_for→ `computer_security`
+- `computer_science` —expands_to→ `cloud_computing`
+- `federated_learning` —from_openalex→ `paper_W2763355946`
+- `federated_learning` —from_openalex→ `paper_W3168997536`
+- `federated_learning` —from_openalex→ `paper_W2146693559`
+- `federated_learning` —from_openalex→ `paper_W2981731882`
+- `federated_learning` —from_openalex→ `paper_W2134295053`
+- `federated_learning` —from_openalex→ `paper_W2912213068`
+- `paper_W2981731882` —has_keyword→ `kw_computer_science`
+- `paper_W2981731882` —has_keyword→ `kw_artificial_intelligence`
+- `paper_W2981731882` —has_keyword→ `kw_taxonomy`
+- `paper_W2981731882` —has_keyword→ `kw_field`
+- `paper_W2981731882` —has_keyword→ `kw_software_deployment`
+- `paper_W2981731882` —has_keyword→ `kw_data_science`
+- `paper_W2981731882` —has_keyword→ `kw_deep_learning`
+- `paper_W2981731882` —has_keyword→ `kw_machine_learning`
+- `paper_W2981731882` —has_keyword→ `kw_management_science`
+- `paper_W2981731882` —has_keyword→ `kw_software_engineering`
+- `paper_W2981731882` —has_keyword→ `kw_engineering`
+
+_OpenAlex data via [OpenAlex](https://openalex.org) — cite and respect their terms._

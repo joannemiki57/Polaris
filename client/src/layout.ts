@@ -76,13 +76,13 @@ export function mindGraphToFlow(g: MindGraph): { nodes: Node[]; edges: Edge[] } 
         meta: n,
       },
       style: {
-        borderColor: kindColor[n.kind] ?? "#334155",
-        borderWidth: 2,
+        borderColor: n.isReview ? "#d97706" : (kindColor[n.kind] ?? "#334155"),
+        borderWidth: n.isReview ? 3 : 2,
         borderRadius: 10,
         padding: 8,
         maxWidth: 220,
         fontSize: 13,
-        background: "#0f172a",
+        background: n.isReview ? "#1c1917" : "#0f172a",
         color: "#f1f5f9",
       },
     };
@@ -93,9 +93,15 @@ export function mindGraphToFlow(g: MindGraph): { nodes: Node[]; edges: Edge[] } 
     source: e.source,
     target: e.target,
     label: e.kind.replace(/_/g, " "),
-    animated: e.kind === "expands_to",
-    style: { stroke: "#94a3b8", strokeWidth: 1.2 },
-    labelStyle: { fill: "#94a3b8", fontSize: 10 },
+    animated: e.kind === "expands_to" || e.kind === "has_keyword",
+    style: {
+      stroke: e.kind === "has_keyword" ? "#0d9488" : "#94a3b8",
+      strokeWidth: e.kind === "has_keyword" ? 1.6 : 1.2,
+    },
+    labelStyle: {
+      fill: e.kind === "has_keyword" ? "#0d9488" : "#94a3b8",
+      fontSize: 10,
+    },
   }));
 
   return { nodes, edges };
