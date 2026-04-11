@@ -11,9 +11,12 @@ export type MindNodeData = {
   dimmed?: boolean;
   revealDelay?: number;
   stagger?: boolean;
+  onExpand?: (id: string) => void;
+  onDeep?: (id: string) => void;
+  busy?: boolean;
 };
 
-export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
+export function MindNode({ id, data, selected }: NodeProps<MindNodeData>) {
   const paperUrl = data.kind === "paper"
     ? (data.meta.doi ? `https://doi.org/${data.meta.doi.replace(/^https?:\/\/doi\.org\//, "")}` : data.meta.url)
     : undefined;
@@ -25,6 +28,22 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
       window.open(paperUrl, "_blank", "noopener,noreferrer");
     },
     [paperUrl],
+  );
+
+  const handleExpand = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      data.onExpand?.(id);
+    },
+    [data, id],
+  );
+
+  const handleDeep = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      data.onDeep?.(id);
+    },
+    [data, id],
   );
 
   const revealStyle = data.stagger
@@ -41,6 +60,34 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
       <Handle type="target" id="t-top" position={Position.Top} />
       <Handle type="target" id="t-right" position={Position.Right} />
       <Handle type="target" id="t-bottom" position={Position.Bottom} />
+
+      {selected && !data.busy && (
+        <div className="node-toolbar">
+          <button
+            type="button"
+            className="node-toolbar-btn"
+            onClick={handleExpand}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8z" fill="#facc15" stroke="#facc15" strokeWidth="0.5"/>
+              <path d="M12.5 1.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="#fde68a" stroke="none"/>
+            </svg>
+            Expand
+          </button>
+          <div className="node-toolbar-divider" />
+          <button
+            type="button"
+            className="node-toolbar-btn"
+            onClick={handleDeep}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <circle cx="6.5" cy="6.5" r="4" stroke="#94a3b8" strokeWidth="1.5"/>
+              <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Deep
+          </button>
+        </div>
+      )}
 
       {data.kind === "paper" && (
         <div className="mind-kind">

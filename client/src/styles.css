@@ -193,6 +193,72 @@ button:disabled {
 .mind-node {
   max-width: 220px;
   transition: opacity 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+}
+
+/* ── Node floating toolbar ── */
+
+.node-toolbar {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.85) translateY(6px);
+  display: flex;
+  align-items: center;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  padding: 4px 6px;
+  gap: 0;
+  white-space: nowrap;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  z-index: 50;
+  opacity: 0;
+  animation: toolbar-pop-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  pointer-events: auto;
+}
+
+@keyframes toolbar-pop-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.85) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1) translateY(0);
+  }
+}
+
+.node-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px !important;
+  border: none !important;
+  border-radius: 999px;
+  background: transparent !important;
+  color: #cbd5e1 !important;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.node-toolbar-btn:hover {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.node-toolbar-btn:active {
+  background: #334155 !important;
+}
+
+.node-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: #334155;
+  flex-shrink: 0;
 }
 
 .mind-node.mind-node-reveal {
@@ -393,7 +459,9 @@ button:disabled {
   stroke: #334155;
   stroke-width: 1.5;
   opacity: 0;
-  animation: skel-fade-in 0.5s ease forwards, skel-pulse 2.4s ease-in-out infinite;
+  animation:
+    skel-node-enter 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    skel-pulse 2.8s ease-in-out infinite;
 }
 
 .skel-root {
@@ -408,22 +476,43 @@ button:disabled {
   stroke-dasharray: 8 4;
   opacity: 0;
   animation:
-    skel-fade-in 0.4s ease forwards,
-    skel-dash-flow 1.6s linear infinite;
+    skel-edge-draw 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    skel-edge-flow 2s linear infinite;
 }
 
-@keyframes skel-fade-in {
-  from { opacity: 0; transform: translateX(-8px); }
-  to   { opacity: 1; transform: translateX(0); }
+@keyframes skel-node-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.7) translateX(-12px);
+  }
+  70% {
+    opacity: 0.95;
+    transform: scale(1.02) translateX(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+@keyframes skel-edge-draw {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 80;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes skel-edge-flow {
+  to { stroke-dashoffset: -24; }
 }
 
 @keyframes skel-pulse {
-  0%, 100% { opacity: 0.55; }
+  0%, 100% { opacity: 0.5; }
   50%      { opacity: 1; }
-}
-
-@keyframes skel-dash-flow {
-  to { stroke-dashoffset: -24; }
 }
 
 .skel-label {

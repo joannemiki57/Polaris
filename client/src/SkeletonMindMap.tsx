@@ -1,43 +1,69 @@
 export function SkeletonMindMap() {
+  // Layer timings — each layer appears as a group
+  const L0 = 0.3;   // root
+  const L1 = 1.8;   // branches
+  const L2 = 3.6;   // sub-branches
+  const L3 = 5.4;   // leaf nodes
+  const E_LEAD = 0.7; // edges appear this much before their target layer
+
   const nodes = [
-    // Topic (root)
-    { x: 60, y: 220, w: 160, h: 44, delay: 0 },
-    // Level 1 branches
-    { x: 340, y: 60, w: 130, h: 36, delay: 0.3 },
-    { x: 340, y: 140, w: 140, h: 36, delay: 0.45 },
-    { x: 340, y: 220, w: 120, h: 36, delay: 0.6 },
-    { x: 340, y: 300, w: 145, h: 36, delay: 0.75 },
-    { x: 340, y: 380, w: 115, h: 36, delay: 0.9 },
-    // Level 2 sub-branches
-    { x: 590, y: 30, w: 110, h: 30, delay: 1.0 },
-    { x: 590, y: 86, w: 100, h: 30, delay: 1.1 },
-    { x: 590, y: 190, w: 120, h: 30, delay: 1.2 },
-    { x: 590, y: 246, w: 105, h: 30, delay: 1.3 },
-    { x: 590, y: 340, w: 115, h: 30, delay: 1.4 },
-    { x: 590, y: 396, w: 95, h: 30, delay: 1.5 },
+    // Layer 0 — root
+    { x: 30,  y: 220, w: 140, h: 42, delay: L0 },
+
+    // Layer 1 — main branches (5)
+    { x: 260, y: 40,  w: 125, h: 34, delay: L1 },
+    { x: 260, y: 120, w: 135, h: 34, delay: L1 + 0.08 },
+    { x: 260, y: 200, w: 115, h: 34, delay: L1 + 0.15 },
+    { x: 260, y: 280, w: 140, h: 34, delay: L1 + 0.22 },
+    { x: 260, y: 360, w: 120, h: 34, delay: L1 + 0.28 },
+
+    // Layer 2 — sub-branches (6)
+    { x: 480, y: 20,  w: 110, h: 28, delay: L2 },
+    { x: 480, y: 72,  w: 100, h: 28, delay: L2 + 0.06 },
+    { x: 480, y: 140, w: 115, h: 28, delay: L2 + 0.12 },
+    { x: 480, y: 192, w: 105, h: 28, delay: L2 + 0.18 },
+    { x: 480, y: 280, w: 120, h: 28, delay: L2 + 0.24 },
+    { x: 480, y: 332, w: 95,  h: 28, delay: L2 + 0.30 },
+
+    // Layer 3 — leaf nodes (6)
+    { x: 670, y: 10,  w: 90,  h: 24, delay: L3 },
+    { x: 670, y: 58,  w: 80,  h: 24, delay: L3 + 0.06 },
+    { x: 670, y: 130, w: 95,  h: 24, delay: L3 + 0.12 },
+    { x: 670, y: 178, w: 85,  h: 24, delay: L3 + 0.18 },
+    { x: 670, y: 270, w: 90,  h: 24, delay: L3 + 0.24 },
+    { x: 670, y: 318, w: 75,  h: 24, delay: L3 + 0.30 },
   ];
 
   const edges = [
-    // Topic → Level 1
-    { from: 0, to: 1, delay: 0.15 },
-    { from: 0, to: 2, delay: 0.3 },
-    { from: 0, to: 3, delay: 0.45 },
-    { from: 0, to: 4, delay: 0.6 },
-    { from: 0, to: 5, delay: 0.75 },
-    // Level 1 → Level 2
-    { from: 1, to: 6, delay: 0.85 },
-    { from: 1, to: 7, delay: 0.95 },
-    { from: 3, to: 8, delay: 1.05 },
-    { from: 3, to: 9, delay: 1.15 },
-    { from: 5, to: 10, delay: 1.25 },
-    { from: 5, to: 11, delay: 1.35 },
+    // Root → Layer 1
+    { from: 0, to: 1,  delay: L1 - E_LEAD },
+    { from: 0, to: 2,  delay: L1 - E_LEAD + 0.06 },
+    { from: 0, to: 3,  delay: L1 - E_LEAD + 0.12 },
+    { from: 0, to: 4,  delay: L1 - E_LEAD + 0.18 },
+    { from: 0, to: 5,  delay: L1 - E_LEAD + 0.24 },
+
+    // Layer 1 → Layer 2
+    { from: 1, to: 6,  delay: L2 - E_LEAD },
+    { from: 1, to: 7,  delay: L2 - E_LEAD + 0.06 },
+    { from: 3, to: 8,  delay: L2 - E_LEAD + 0.12 },
+    { from: 3, to: 9,  delay: L2 - E_LEAD + 0.18 },
+    { from: 5, to: 10, delay: L2 - E_LEAD + 0.24 },
+    { from: 5, to: 11, delay: L2 - E_LEAD + 0.30 },
+
+    // Layer 2 → Layer 3
+    { from: 6,  to: 12, delay: L3 - E_LEAD },
+    { from: 7,  to: 13, delay: L3 - E_LEAD + 0.06 },
+    { from: 8,  to: 14, delay: L3 - E_LEAD + 0.12 },
+    { from: 9,  to: 15, delay: L3 - E_LEAD + 0.18 },
+    { from: 10, to: 16, delay: L3 - E_LEAD + 0.24 },
+    { from: 11, to: 17, delay: L3 - E_LEAD + 0.30 },
   ];
 
   return (
     <div className="skel-wrap">
       <svg
         className="skel-svg"
-        viewBox="0 0 760 460"
+        viewBox="0 0 800 400"
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
@@ -92,7 +118,7 @@ export function SkeletonMindMap() {
               key={`e${i}`}
               d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`}
               className="skel-edge"
-              style={{ animationDelay: `${e.delay}s` }}
+              style={{ animationDelay: `${e.delay}s, ${e.delay}s` }}
             />
           );
         })}
@@ -107,7 +133,7 @@ export function SkeletonMindMap() {
             rx={10}
             ry={10}
             className={`skel-node${i === 0 ? " skel-root" : ""}`}
-            style={{ animationDelay: `${n.delay}s` }}
+            style={{ animationDelay: `${n.delay}s, ${n.delay + 0.6}s` }}
           />
         ))}
       </svg>
