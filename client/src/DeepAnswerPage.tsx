@@ -8,6 +8,7 @@ import {
 
 interface Props {
   keyword: string;
+  ancestors: string[];
   onBack: () => void;
 }
 
@@ -29,7 +30,10 @@ function renderMarkdown(md: string): string {
     .replace(/\n/g, "<br/>");
 }
 
-export function DeepAnswerPage({ keyword, onBack }: Props) {
+export function DeepAnswerPage({ keyword, ancestors, onBack }: Props) {
+  const searchKeyword = ancestors.length > 0
+    ? [...ancestors].reverse().concat(keyword).join(" ")
+    : keyword;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [papers, setPapers] = useState<DeepPaper[]>([]);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -47,7 +51,7 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await deepAnswerInit(keyword);
+      const res = await deepAnswerInit(searchKeyword);
       setSessionId(res.sessionId);
       setPapers(res.papers);
     } catch (e) {
@@ -55,7 +59,7 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [keyword]);
+  }, [searchKeyword]);
 
   useEffect(() => {
     init();
@@ -71,7 +75,7 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
     try {
       const { reply } = await deepAnswerChat(
         sessionId,
-        keyword,
+        searchKeyword,
         userMsg.text,
         history,
       );
@@ -101,6 +105,12 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
         </button>
         <div className="da-breadcrumb">
           <span className="da-crumb-dim">Deep Answer</span>
+          {[...ancestors].reverse().map((a) => (
+            <span key={a}>
+              <span className="da-crumb-sep">/</span>
+              <span className="da-crumb-dim">{a}</span>
+            </span>
+          ))}
           <span className="da-crumb-sep">/</span>
           <span className="da-crumb-node">{keyword}</span>
         </div>
@@ -172,14 +182,14 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
               <div className="da-system-msg">
                 <div className="da-spinner" />
                 Searching for research papers about
-                <strong> "{keyword}"</strong>...
+                <strong> "{searchKeyword}"</strong>...
               </div>
             )}
 
             {!loading && papers.length > 0 && messages.length === 0 && (
               <div className="da-system-msg">
                 <strong>{papers.length} research papers</strong> about "
-                {keyword}" loaded (sorted by citation count, review papers
+                {searchKeyword}" loaded (sorted by citation count, review papers
                 excluded).
                 <br />
                 <br />
@@ -208,7 +218,7 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
 
             {!loading && papers.length === 0 && !error && (
               <div className="da-system-msg da-empty">
-                No research papers found for "{keyword}". Try a different node.
+                No research papers found for "{searchKeyword}". Try a different node.
               </div>
             )}
 
@@ -253,7 +263,7 @@ export function DeepAnswerPage({ keyword, onBack }: Props) {
               placeholder={
                 loading
                   ? "Loading papers..."
-                  : `Ask about "${keyword}" — answers grounded in ${papers.length} papers`
+                  : `Ask about "${searchKeyword}" — answers grounded in ${papers.length} papers`
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

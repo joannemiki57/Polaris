@@ -39,6 +39,25 @@ function graphNodeById(g: MindGraph, id: string): GraphNode | undefined {
   return g.nodes.find((n) => n.id === id);
 }
 
+function getAncestorLabels(g: MindGraph, nodeId: string): string[] {
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+    for (const e of g.edges) {
+      if (e.target === cur && !visited.has(e.source)) {
+        const parent = graphNodeById(g, e.source);
+        if (parent) labels.push(parent.label);
+        queue.push(e.source);
+      }
+    }
+  }
+  return labels;
+}
+
 export default function App() {
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
@@ -52,6 +71,7 @@ export default function App() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
+  const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -149,6 +169,8 @@ export default function App() {
     if (!graph || selectedIds.length !== 1) return;
     const node = graphNodeById(graph, selectedIds[0]!);
     if (!node) return;
+    const ancestors = getAncestorLabels(graph, node.id);
+    setDeepPageAncestors(ancestors);
     setDeepPageKeyword(node.label);
   };
 
@@ -182,6 +204,7 @@ export default function App() {
     return (
       <DeepAnswerPage
         keyword={deepPageKeyword}
+        ancestors={deepPageAncestors}
         onBack={() => setDeepPageKeyword(null)}
       />
     );
