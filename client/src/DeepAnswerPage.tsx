@@ -8,8 +8,11 @@ import {
 
 interface Props {
   keyword: string;
+  keywordNodeId: string;
   ancestors: string[];
   onBack: () => void;
+  onPinPaper: (paper: DeepPaper) => void;
+  pinnedUrls: Set<string>;
 }
 
 function renderMarkdown(md: string): string {
@@ -30,7 +33,7 @@ function renderMarkdown(md: string): string {
     .replace(/\n/g, "<br/>");
 }
 
-export function DeepAnswerPage({ keyword, ancestors, onBack }: Props) {
+export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancestors, onBack, onPinPaper, pinnedUrls }: Props) {
   const searchKeyword = ancestors.length > 0
     ? [...ancestors].reverse().concat(keyword).join(" ")
     : keyword;
@@ -126,43 +129,55 @@ export function DeepAnswerPage({ keyword, ancestors, onBack }: Props) {
           {loading && <p className="da-sidebar-hint">Searching papers...</p>}
           {error && <p className="da-sidebar-err">{error}</p>}
           <ul className="da-paper-list">
-            {papers.map((p, i) => (
-              <li key={`${p.openAlexUrl}-${i}`} className="da-paper-item">
-                <div className="da-paper-rank">#{i + 1}</div>
-                <div className="da-paper-info">
-                  <a
-                    href={p.openAlexUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="da-paper-title"
+            {papers.map((p, i) => {
+              const isPinned = pinnedUrls.has(p.openAlexUrl);
+              return (
+                <li key={`${p.openAlexUrl}-${i}`} className="da-paper-item">
+                  <div className="da-paper-rank">#{i + 1}</div>
+                  <div className="da-paper-info">
+                    <a
+                      href={p.openAlexUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="da-paper-title"
+                    >
+                      {p.title}
+                    </a>
+                    <div className="da-paper-meta">
+                      {p.authors.slice(0, 3).join(", ")}
+                      {p.authors.length > 3 ? " et al." : ""}
+                      {p.year ? ` · ${p.year}` : ""}
+                    </div>
+                    <div className="da-paper-stats">
+                      {p.citedByCount != null && (
+                        <span className="da-cite-count">
+                          {p.citedByCount.toLocaleString()} citations
+                        </span>
+                      )}
+                      {p.doi && (
+                        <a
+                          href={p.doi}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="da-doi"
+                        >
+                          DOI
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`da-pin-btn${isPinned ? " da-pinned" : ""}`}
+                    title={isPinned ? "Added to graph" : "Add to graph"}
+                    onClick={() => !isPinned && onPinPaper(p)}
+                    disabled={isPinned}
                   >
-                    {p.title}
-                  </a>
-                  <div className="da-paper-meta">
-                    {p.authors.slice(0, 3).join(", ")}
-                    {p.authors.length > 3 ? " et al." : ""}
-                    {p.year ? ` · ${p.year}` : ""}
-                  </div>
-                  <div className="da-paper-stats">
-                    {p.citedByCount != null && (
-                      <span className="da-cite-count">
-                        {p.citedByCount.toLocaleString()} citations
-                      </span>
-                    )}
-                    {p.doi && (
-                      <a
-                        href={p.doi}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="da-doi"
-                      >
-                        DOI
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
+                    {isPinned ? "★" : "☆"}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           {papers.length > 0 && (
             <p className="da-attribution">

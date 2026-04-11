@@ -119,23 +119,7 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       keywordGraph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
     }
 
-    // Build paper nodes and attach them to the root topic
-    const rootNode = keywordGraph.nodes.find((n) => n.kind === "topic");
-    const rootId = rootNode?.id ?? keywordGraph.nodes[0]?.id ?? "root";
-    const { nodes: paperNodes, edgeTargets } = workHitToPaperNodes(allHits, rootId);
-    for (const pn of paperNodes) {
-      const hit = allHits.find((h) => h.id === pn.openAlexId);
-      if (hit?.type === "review") pn.isReview = true;
-    }
-    const paperEdges: GraphEdge[] = edgeTargets.map((t, i) => ({
-      id: `init_${t.paperId}_${i}`,
-      source: t.sourceId,
-      target: t.paperId,
-      kind: "from_openalex",
-    }));
-
-    const graph = mergeDelta(keywordGraph, { new_nodes: paperNodes, new_edges: paperEdges });
-    res.json({ graph });
+    res.json({ graph: keywordGraph });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });
