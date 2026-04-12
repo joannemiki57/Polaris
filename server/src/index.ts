@@ -141,11 +141,33 @@ app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
       res.status(400).json({ error: "graph with nodes required" });
       return;
     }
+
+    // Build search query from selected labels + ancestry for grounded expansion
+    const searchQueries = selected.map((s) => {
+      const node = base.nodes.find((n) => n.id === s.id);
+      const ancestors: string[] = [];
+      let current = s.id;
+      for (let depth = 0; depth < 2; depth++) {
+        const parentEdge = base.edges.find((e) => e.target === current);
+        if (!parentEdge) break;
+        const parentNode = base.nodes.find((n) => n.id === parentEdge.source);
+        if (!parentNode) break;
+        ancestors.push(parentNode.label);
+        current = parentNode.id;
+      }
+      return [...ancestors.reverse(), node?.label ?? s.label].join(" ");
+    });
+    const combinedQuery = searchQueries.join(" ");
+
+    // Fetch papers (same as deep-answer/init: 10 articles, citation desc)
+    const papers = await searchResearchPapers(combinedQuery, OPENALEX_MAILTO, 10);
+
     const graph = await expandFromSelection(
       GEMINI_KEY,
       question,
       selected,
       base,
+      papers,
       GEMINI_MODEL,
     );
     res.json({ graph });

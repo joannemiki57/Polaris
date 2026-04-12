@@ -228,16 +228,20 @@ function getAncestry(
 const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
-    { "id": "unique_id", "kind": "keyword"|"subtask", "label": "...", "summary": "one sentence" }
+    { "id": "unique_id", "kind": "keyword", "label": "...", "summary": "one sentence" }
   ],
   "new_edges": [
-    { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for"|"user_linked" }
+    { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for" }
   ]
 }
 Rules:
+- You are given RESEARCH PAPERS (with abstracts) retrieved from OpenAlex for the selected node context.
+- Analyze the paper abstracts and identify RECURRING / OVERLAPPING concepts that appear across MULTIPLE papers.
+- Return at most 5 keyword nodes — only concepts that are shared or recurring across the papers. Quality over quantity.
+- Each keyword must be a specific research-level concept (e.g., "gradient compression", "non-IID data"), NOT generic terms like "computer science", "AI", "methods".
+- The summary should mention which papers (by short title) share this concept.
 - Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.
-- Each selected node includes its ANCESTRY (parent → grandparent chain). Use this lineage to generate SPECIFIC, contextually relevant child nodes — not generic subtopics of the label alone.
-- The deeper a node is in the tree, the more specialized its children should be. A node's meaning is defined by its full path from the root, not just its own label.`;
+- Use ASCII snake_case ids derived from the keyword label.`;
 
 function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
   const data = JSON.parse(stripFences(raw)) as {
@@ -278,6 +282,7 @@ export async function expandFromSelection(
   question: string,
   selected: { id: string; label: string; kind: string }[],
   base: MindGraph,
+  papers: OpenAlexWorkDetailed[],
   model: string,
 ): Promise<MindGraph> {
   if (!apiKey) {
@@ -304,12 +309,28 @@ export async function expandFromSelection(
     };
   });
 
+  // Format papers for the prompt
+  const paperSection = papers
+    .map((p, i) => {
+      const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 500)}` : "";
+      return `[Paper ${i + 1}] "${p.title ?? "Untitled"}" (${p.cited_by_count ?? 0} citations, ${p.publication_year ?? "?"})${abs}`;
+    })
+    .join("\n\n");
+
   const gemini = getGemini(apiKey, model);
   const payload = JSON.stringify({
     originalQuestion: question,
     selected: selectedWithAncestry,
     existingNodeIds: base.nodes.map((n) => n.id),
   });
+  const userContent = `${payload}
+
+RESEARCH PAPERS (10 top-cited articles from OpenAlex for the selected keywords):
+
+${paperSection || "(no papers found)"}
+
+From the paper abstracts above, find RECURRING research concepts that appear across multiple papers. Return at most 5 keywords that represent the most important overlapping themes specific to "${question}" in the context of the selected nodes.`;
+
   const result = await gemini.generateContent({
     contents: [
       {
@@ -317,16 +338,17 @@ export async function expandFromSelection(
         parts: [
           {
             text:
-              "Given the user's research question and SELECTED nodes (with their ancestry path from root), generate specialized child nodes that are contextually grounded in the full lineage — not just the node label in isolation. " +
+              "You analyze research papers to discover OVERLAPPING, RECURRING keywords across multiple papers. " +
+              "Only extract concepts that appear in 2+ papers' abstracts — this ensures the keywords represent established research directions, not one-off topics. " +
               DELTA_HINT +
               "\n\n" +
-              payload,
+              userContent,
           },
         ],
       },
     ],
     generationConfig: {
-      temperature: 0.35,
+      temperature: 0.2,
       responseMimeType: "application/json",
     },
   });
