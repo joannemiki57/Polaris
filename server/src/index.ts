@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
@@ -32,6 +33,7 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = Number(process.env.PORT) || 8787;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
@@ -42,8 +44,12 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 // Serve React build in production
+// tsx watch: __dirname = server/src → ../../client/dist
+// node dist:  __dirname = server/dist → ../../client/dist
 const clientDist = path.join(__dirname, "../../client/dist");
-app.use(express.static(clientDist));
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+}
 
 const apiLimiter = rateLimit({
   windowMs: 60_000,
@@ -730,10 +736,12 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
 });
 
 // SPA fallback: serve index.html for all non-API routes
-app.get("*", (_req, res) => {
-  const index = path.join(clientDist, "index.html");
-  res.sendFile(index);
-});
+const indexHtml = path.join(clientDist, "index.html");
+if (fs.existsSync(indexHtml)) {
+  app.get("*", (_req, res) => {
+    res.sendFile(indexHtml);
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`API http://localhost:${PORT} [gemini/${GEMINI_MODEL}]`);
