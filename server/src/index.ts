@@ -87,8 +87,8 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
 
     // Hybrid pipeline: fetch real papers, then let LLM organize their topics+abstracts
     const [reviews, articles] = await Promise.all([
-      searchWorks(question, OPENALEX_MAILTO, 3, "review"),
-      searchWorks(question, OPENALEX_MAILTO, 3, "article"),
+      searchWorks(question, OPENALEX_MAILTO, 2, "review"),
+      searchWorks(question, OPENALEX_MAILTO, 6, "article"),
     ]);
     const allHits = [...reviews, ...articles];
 

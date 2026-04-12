@@ -93,7 +93,7 @@ export async function searchWorks(
     per_page: String(perPage),
   });
   if (typeFilter) params.set("filter", `type:${typeFilter}`);
-  else params.set("sort", "cited_by_count:desc");
+  params.set("sort", "cited_by_count:desc");
   if (mailto) params.set("mailto", mailto);
 
   const url = `${BASE}/works?${params.toString()}`;
