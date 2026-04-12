@@ -49,4 +49,4 @@ client/dist/
 scripts/session-changelog-hook.sh
 
 # Obsidian (optional: reduce noisy machine-specific UI state)
-Cursor Hack/.obsidian/workspace.json
+Cursor Hack/.obsidian/
