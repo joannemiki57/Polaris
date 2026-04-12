@@ -84,7 +84,7 @@ Main merged two PRs that introduced:
 
 **Resolution: Take main's version.** It's more portable. Both do the same thing.
 
-### 4. `docs/api-summary.md` — 1 conflict region (trivial)
+### 4. `docs/plan-phase/api-summary.md` — 1 conflict region (trivial)
 
 Both sides have identical content — same trailing attribution line. **Take either side.**
 

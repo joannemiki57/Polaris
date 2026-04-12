@@ -101,11 +101,15 @@ Polaris/
 │       ├── semanticScholar.ts # Semantic Scholar: paper section heading extraction
 │       └── graphTypes.ts     # Shared data model (canonical source)
 ├── docs/                    # Design and research documents
-│   ├── direction-plan.md     # Product vision and north star
-│   ├── agentic-research.md   # Technical research: LLM architectures, graph reasoning
-│   ├── api-summary.md        # OpenAlex API reference
 │   ├── animations.md         # Animation design notes
-│   └── limitations.md        # Known risks and open questions
+│   ├── sample-results/      # Example graph exports (markdown)
+│   │   ├── example.md
+│   │   └── example2.md
+│   └── plan-phase/          # Planning-phase notes (vision, research, API ref, risks)
+│       ├── direction-plan.md
+│       ├── agentic-research.md
+│       ├── api-summary.md
+│       └── limitations.md
 ├── sessions/                # Development session notes
 ├── package.json             # Root workspace config
 └── README.md                # This file
@@ -519,7 +523,7 @@ The server holds API keys, enforces rate limits, manages chat sessions (in-memor
 
 ## Known limitations and risks
 
-Detailed analysis in [`docs/limitations.md`](docs/limitations.md).
+Detailed analysis in [`docs/plan-phase/limitations.md`](docs/plan-phase/limitations.md).
 
 | Area | Risk |
 |------|------|
@@ -570,8 +574,8 @@ Without `GEMINI_API_KEY`, the system falls back to mock graphs with placeholder 
 
 | Document | Description |
 |----------|-------------|
-| [`docs/direction-plan.md`](docs/direction-plan.md) | Product vision: inspiration-aware knowledge graph with selectable expansion |
-| [`docs/agentic-research.md`](docs/agentic-research.md) | Technical background: LLM limitations, graph reasoning (GoT, NoT), KG+RAG pipelines |
-| [`docs/api-summary.md`](docs/api-summary.md) | OpenAlex API reference (entities, filters, query parameters) |
-| [`docs/limitations.md`](docs/limitations.md) | Scope risks, UX challenges, trust boundaries |
+| [`docs/plan-phase/direction-plan.md`](docs/plan-phase/direction-plan.md) | Product vision: inspiration-aware knowledge graph with selectable expansion |
+| [`docs/plan-phase/agentic-research.md`](docs/plan-phase/agentic-research.md) | Technical background: LLM limitations, graph reasoning (GoT, NoT), KG+RAG pipelines |
+| [`docs/plan-phase/api-summary.md`](docs/plan-phase/api-summary.md) | OpenAlex API reference (entities, filters, query parameters) |
+| [`docs/plan-phase/limitations.md`](docs/plan-phase/limitations.md) | Scope risks, UX challenges, trust boundaries |
 | [`sessions/`](sessions/) | Development session notes documenting architectural evolution |
