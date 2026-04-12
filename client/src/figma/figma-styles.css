@@ -1,0 +1,636 @@
+/* ══════════════════════════════════════════
+   Figma Design System — Polaris
+   Colors: bg #09090b, accent #ffd369, text #eee
+   ══════════════════════════════════════════ */
+
+/* ── Boot (session hydrate) ── */
+
+.fg-boot-screen {
+  min-height: 100vh;
+  background: #09090b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fg-boot-pulse {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 3px solid rgba(255, 211, 105, 0.22);
+  border-top-color: #ffd369;
+  animation: fg-boot-spin 0.85s linear infinite;
+}
+
+@keyframes fg-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Home Page (hero) ── */
+
+.fg-home {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #09090b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.fg-home-ambient {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% -20%, rgba(255, 211, 105, 0.06), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fg-home-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 10%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Modern Aurora Animation ── */
+
+.fg-home-aurora {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  filter: blur(80px);
+  opacity: 0.5;
+}
+
+.fg-aurora-shape {
+  position: absolute;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+}
+
+.fg-aurora-1 {
+  width: 50vw;
+  height: 50vw;
+  max-width: 600px;
+  max-height: 600px;
+  background: rgba(255, 211, 105, 0.12);
+  animation: fg-aurora-swirl 20s infinite linear;
+  transform-origin: 40% 60%;
+}
+
+.fg-aurora-2 {
+  width: 40vw;
+  height: 40vw;
+  max-width: 500px;
+  max-height: 500px;
+  background: rgba(161, 161, 170, 0.06);
+  animation: fg-aurora-swirl-alt 25s infinite linear;
+  transform-origin: 60% 40%;
+}
+
+@keyframes fg-aurora-swirl {
+  0% { transform: rotate(0deg) scale(1) translate(10%, 10%); }
+  50% { transform: rotate(180deg) scale(1.1) translate(-10%, -10%); }
+  100% { transform: rotate(360deg) scale(1) translate(10%, 10%); }
+}
+
+@keyframes fg-aurora-swirl-alt {
+  0% { transform: rotate(360deg) scale(1) translate(-10%, -10%); }
+  50% { transform: rotate(180deg) scale(1.2) translate(10%, 10%); }
+  100% { transform: rotate(0deg) scale(1) translate(-10%, -10%); }
+}
+
+.fg-home-bg {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  padding: 48px 24px 56px;
+}
+
+/* ── Hero copy ── */
+
+.fg-splash-copy {
+  text-align: center;
+  max-width: 520px;
+}
+
+.fg-splash-eyebrow {
+  margin: 0 0 16px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(255, 211, 105, 0.6);
+  opacity: 0;
+  animation: fg-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+}
+
+.fg-title {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 48px;
+  letter-spacing: -1.5px;
+  margin: 0;
+  line-height: 1.2;
+  background: linear-gradient(135deg, #ffffff 0%, #ffd369 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  opacity: 0;
+  animation: fg-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+}
+
+.fg-tagline {
+  margin: 20px 0 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #94a3b8;
+  font-weight: 400;
+  letter-spacing: -0.1px;
+  opacity: 0;
+  animation: fg-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+}
+
+/* ── Modern Premium CTA Button ── */
+
+.fg-hero-btn {
+  position: relative;
+  padding: 12px 28px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 211, 105, 0.2);
+  border-radius: 99px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  opacity: 0;
+  animation: fg-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.fg-hero-btn-text {
+  position: relative;
+  z-index: 2;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffd369;
+  letter-spacing: -0.1px;
+  transition: color 0.3s ease;
+}
+
+.fg-hero-btn-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 211, 105, 0.15) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 1;
+}
+
+.fg-hero-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 211, 105, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -8px rgba(255, 211, 105, 0.2);
+}
+
+.fg-hero-btn:hover .fg-hero-btn-text {
+  color: #ffffff;
+}
+
+.fg-hero-btn:hover .fg-hero-btn-glow {
+  opacity: 1;
+}
+
+@keyframes fg-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* ── Command Bar (Home) ── */
+
+.fg-command-bar {
+  width: 640px;
+  max-width: 100%;
+}
+
+.fg-command-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 17px;
+  background: #141414;
+  border: 1px solid #3f3f46;
+  border-radius: 16px;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.fg-command-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.fg-command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #eee;
+  font-size: 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.15px;
+}
+
+.fg-command-input::placeholder {
+  color: #6b7280;
+}
+
+.fg-command-btn {
+  padding: 6px 20px !important;
+  height: 33px;
+  background: #ffd369 !important;
+  border: none !important;
+  border-radius: 10px;
+  color: #222831 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: -0.15px;
+  position: relative;
+  z-index: 1;
+}
+
+.fg-command-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fg-command-btn:hover:not(:disabled) {
+  background: #ffe08a !important;
+}
+
+/* ── Navbar ── */
+
+.fg-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 48px;
+  background: rgba(9, 9, 11, 0.85);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.fg-navbar-brand {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: #ffd369 !important;
+  letter-spacing: -0.43px;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer;
+}
+
+.fg-navbar-brand:hover {
+  color: #ffe08a !important;
+}
+
+/* ── Command Bar (Graph view) ── */
+
+.fg-cmdbar {
+  width: 640px;
+  max-width: calc(100% - 32px);
+  margin: 0 auto;
+}
+
+.fg-cmdbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 17px;
+  background: #141414;
+  border: 1px solid #3f3f46;
+  border-radius: 16px;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.fg-cmdbar-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.fg-cmdbar-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #eee;
+  font-size: 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.15px;
+}
+
+.fg-cmdbar-input::placeholder {
+  color: #6b7280;
+}
+
+.fg-cmdbar-clear {
+  width: 24px;
+  height: 24px;
+  background: transparent !important;
+  border: none !important;
+  color: #6b7280 !important;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.fg-cmdbar-clear:hover {
+  color: #eee !important;
+}
+
+.fg-cmdbar-submit {
+  padding: 6px 20px !important;
+  height: 33px;
+  background: #ffd369 !important;
+  border: none !important;
+  border-radius: 10px;
+  color: #222831 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: -0.15px;
+}
+
+.fg-cmdbar-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fg-cmdbar-submit:hover:not(:disabled) {
+  background: #ffe08a !important;
+}
+
+/* ── Deep Panel ── */
+
+.fg-deep-panel {
+  position: relative;
+  background: #141414;
+  border-top: 1px solid #3f3f46;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
+.fg-dp-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  background: transparent !important;
+  border: none !important;
+  color: #9ca3af !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 16px 16px 0 0;
+}
+
+.fg-dp-toggle:hover {
+  color: #eee !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.fg-dp-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 32px 32px;
+  overflow-y: auto;
+  max-height: 315px;
+}
+
+.fg-dp-title {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: #ffd369;
+  letter-spacing: -0.44px;
+  margin: 0 0 16px;
+}
+
+.fg-dp-body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.625;
+  color: #eee;
+  letter-spacing: -0.08px;
+}
+
+.fg-dp-body h2,
+.fg-dp-h2 {
+  font-weight: 700;
+  font-size: 14px;
+  color: #eee;
+  margin: 20px 0 8px;
+  letter-spacing: -0.15px;
+}
+
+.fg-dp-body h3,
+.fg-dp-h3 {
+  font-weight: 700;
+  font-size: 14px;
+  color: #eee;
+  margin: 16px 0 6px;
+  letter-spacing: -0.15px;
+}
+
+.fg-dp-body strong {
+  color: #eee;
+}
+
+.fg-dp-body li {
+  color: #9ca3af;
+  margin: 4px 0;
+  padding-left: 8px;
+}
+
+.fg-dp-body li strong {
+  color: #eee;
+}
+
+.fg-dp-body a {
+  color: #ffd369;
+}
+
+.fg-dp-empty {
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+/* ── Graph Node styles (matching Figma node design) ── */
+
+.fg-node-topic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fg-node-icon {
+  width: 58px;
+  height: 58px;
+}
+
+.fg-node-label-topic {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #ffd369;
+  text-align: center;
+  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+.fg-node-keyword {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fg-node-label-keyword {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  color: #eee;
+  text-align: center;
+  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+.fg-node-subtask {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fg-node-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  box-shadow: 0 0 8px rgba(229, 231, 235, 0.4);
+}
+
+.fg-node-label-subtask {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  letter-spacing: 0.06px;
+  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+.fg-node-paper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fg-node-dot-paper {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: #6b7280;
+  box-shadow: 0 0 4px rgba(107, 114, 128, 0.3);
+}
+
+.fg-node-label-paper {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 10px;
+  color: #6b7280;
+  text-align: center;
+  letter-spacing: 0.12px;
+  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Minimap override ── */
+
+.fg-minimap {
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .fg-command-bar,
+  .fg-cmdbar {
+    width: 100%;
+    padding: 0 16px;
+  }
+
+  .fg-title {
+    font-size: 32px;
+  }
+
+  .fg-tagline {
+    font-size: 14px;
+  }
+
+  .fg-dp-content {
+    padding: 0 16px 24px;
+  }
+}
