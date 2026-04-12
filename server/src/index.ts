@@ -44,9 +44,14 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 // Serve React build in production
-// tsx watch: __dirname = server/src → ../../client/dist
-// node dist:  __dirname = server/dist → ../../client/dist
-const clientDist = path.join(__dirname, "../../client/dist");
+// Try multiple possible paths for client/dist
+const candidatePaths = [
+  path.join(__dirname, "../../client/dist"),
+  path.join(process.cwd(), "client/dist"),
+  path.join(process.cwd(), "../client/dist"),
+];
+const clientDist = candidatePaths.find((p) => fs.existsSync(p)) ?? candidatePaths[0]!;
+console.log(`[static] __dirname=${__dirname} cwd=${process.cwd()} clientDist=${clientDist} exists=${fs.existsSync(clientDist)}`);
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
 }
@@ -736,10 +741,9 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
 });
 
 // SPA fallback: serve index.html for all non-API routes
-const indexHtml = path.join(clientDist, "index.html");
-if (fs.existsSync(indexHtml)) {
+if (fs.existsSync(clientDist)) {
   app.get("*", (_req, res) => {
-    res.sendFile(indexHtml);
+    res.sendFile(path.join(clientDist, "index.html"));
   });
 }
 
