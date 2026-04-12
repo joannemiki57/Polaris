@@ -202,6 +202,8 @@ export default function App() {
     setStatus("Expanding question…");
     try {
       const { graph: g } = await expandGraph(query);
+      archiveSession({ question: query, graph: g });
+      setSessionHistory(loadSessionHistory());
       setGraph(g);
       setSelectedIds([]);
       setDeepMd("");

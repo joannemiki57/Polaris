@@ -107,6 +107,16 @@ export function archiveSession(session: Session) {
   };
 
   const prev = loadSessionHistory();
+  const latest = prev[0];
+  if (
+    latest
+    && latest.question === nextRecord.question
+    && latest.graphTitle === nextRecord.graphTitle
+    && latest.nodeCount === nextRecord.nodeCount
+    && latest.edgeCount === nextRecord.edgeCount
+  ) {
+    return;
+  }
   const merged = [nextRecord, ...prev].slice(0, 30);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(merged));
 }

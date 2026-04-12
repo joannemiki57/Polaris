@@ -40,3 +40,7 @@ Outcome: a structured implementation plan (phases: scope, data model, LLM JSON, 
 ---
 
 *If you add new Cursor chats later, append a short bullet here so the vault stays a living changelog.*
+
+## Update Changelog
+
+- 2026-04-12: Added sessions CHANGELOG template and two-feature row policy | Added session changelog hook and pre-commit enforcement

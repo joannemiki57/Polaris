@@ -556,6 +556,17 @@ cp server/.env.example server/.env   # then edit with your keys
 npm run dev
 ```
 
+### Session changelog hook
+
+```bash
+npm run hooks:install
+npm run session:changelog -- 2026-04-12 "feature 1" "feature 2"
+```
+
+- `sessions/CHANGELOG.md` keeps one short row per update (max two feature summaries).
+- The hook script also appends the same brief update to `agent.md` / `Claude.md` / `VS Code.md` / `cursor.md` when those files exist.
+- Current pre-commit hook blocks code commits if `sessions/CHANGELOG.md` was not updated.
+
 ### Environment variables (`server/.env`)
 
 | Variable | Required | Description |

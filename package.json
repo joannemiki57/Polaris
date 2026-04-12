@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w client\" \"npm run dev -w server\"",
     "build": "npm run build -w client && npm run build -w server",
-    "start": "npm run start -w server"
+    "start": "npm run start -w server",
+    "session:changelog": "bash scripts/session-changelog-hook.sh",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

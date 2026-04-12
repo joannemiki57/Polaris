@@ -44,5 +44,9 @@ client/dist/
 # Cursor MCP (local secrets; example file is tracked)
 .cursor/mcp.json
 
+# Local git hooks (developer machine only)
+.githooks/
+scripts/session-changelog-hook.sh
+
 # Obsidian (optional: reduce noisy machine-specific UI state)
 Cursor Hack/.obsidian/workspace.json
