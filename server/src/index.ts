@@ -44,14 +44,13 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
 // Serve React build in production
-// Try multiple possible paths for client/dist
 const candidatePaths = [
+  path.join(__dirname, "public"),
   path.join(__dirname, "../../client/dist"),
   path.join(process.cwd(), "client/dist"),
-  path.join(process.cwd(), "../client/dist"),
 ];
 const clientDist = candidatePaths.find((p) => fs.existsSync(p)) ?? candidatePaths[0]!;
-console.log(`[static] __dirname=${__dirname} cwd=${process.cwd()} clientDist=${clientDist} exists=${fs.existsSync(clientDist)}`);
+console.log(`[static] clientDist=${clientDist} exists=${fs.existsSync(clientDist)}`);
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
 }
