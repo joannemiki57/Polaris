@@ -41,19 +41,9 @@ const S2_API_KEY = process.env.S2_API_KEY;
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/", (_req, res) => {
-  res.type("html").send(`<!doctype html>
-<html><head><meta charset="utf-8"><title>MindGraph API</title></head>
-<body style="font-family:system-ui;padding:1.5rem;max-width:40rem">
-  <h1>MindGraph API</h1>
-  <p>There is no page at <code>/</code>. JSON endpoints live under <code>/api</code>.</p>
-  <ul>
-    <li><a href="/api/health"><code>GET /api/health</code></a> — status</li>
-    <li><code>POST /api/graph/expand</code> — body: <code>{"question":"..."}</code></li>
-  </ul>
-  <p>Use the web app at <a href="http://localhost:5173">http://localhost:5173</a>; it proxies <code>/api</code> to this server.</p>
-</body></html>`);
-});
+// Serve React build in production
+const clientDist = path.join(__dirname, "../../client/dist");
+app.use(express.static(clientDist));
 
 const apiLimiter = rateLimit({
   windowMs: 60_000,
@@ -737,6 +727,12 @@ app.post("/api/graph/attach-papers", apiLimiter, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });
   }
+});
+
+// SPA fallback: serve index.html for all non-API routes
+app.get("*", (_req, res) => {
+  const index = path.join(clientDist, "index.html");
+  res.sendFile(index);
 });
 
 app.listen(PORT, () => {
