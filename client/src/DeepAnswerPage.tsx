@@ -7,6 +7,7 @@ import {
   type ChatMsg,
   type DeepPaper,
 } from "./api";
+import { loadDeepSession, saveDeepSession } from "./persistence";
 
 interface Props {
   keyword: string;
@@ -82,6 +83,16 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     }
   }, [starsStorageKey]);
 
+  useEffect(() => {
+    setSessionId(null);
+    setPapers([]);
+    setMessages([]);
+    setInput("");
+    setError(null);
+    setLoading(true);
+    setAddMenuOpen(false);
+  }, [searchKeyword]);
+
   const init = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -97,8 +108,29 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   }, [searchKeyword]);
 
   useEffect(() => {
+    const snapshot = loadDeepSession(searchKeyword);
+    if (snapshot && (snapshot.sessionId || snapshot.papers.length > 0 || snapshot.messages.length > 0 || snapshot.input.trim())) {
+      setSessionId(snapshot.sessionId);
+      setPapers(snapshot.papers as DeepPaper[]);
+      setMessages(snapshot.messages as ChatMsg[]);
+      setInput(snapshot.input);
+      setLoading(false);
+      return;
+    }
     init();
-  }, [init]);
+  }, [init, searchKeyword]);
+
+  useEffect(() => {
+    const hasState = Boolean(sessionId) || papers.length > 0 || messages.length > 0 || input.trim().length > 0;
+    if (!hasState) return;
+    saveDeepSession(searchKeyword, {
+      sessionId,
+      papers,
+      messages,
+      input,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [searchKeyword, sessionId, papers, messages, input]);
 
   const send = async () => {
     if (!input.trim() || !sessionId || sending) return;

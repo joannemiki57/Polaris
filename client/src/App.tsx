@@ -29,11 +29,14 @@ import type { GraphNode, MindGraph } from "./graphTypes";
 import { mindGraphToFlow, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
 import {
+  archiveSession,
   clearSession,
   downloadMarkdown,
   exportMarkdown,
+  loadSessionHistory,
   loadSession,
   saveSession,
+  type SessionRecord,
 } from "./persistence";
 
 const nodeTypes = { mind: MindNode };
@@ -99,6 +102,7 @@ export default function App() {
   const [deepPanelOpen, setDeepPanelOpen] = useState(false);
   const [paperQuery, setPaperQuery] = useState("");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("radial");
+  const [sessionHistory, setSessionHistory] = useState<SessionRecord[]>([]);
   /** After splash: main workspace (sidebar + canvas) even before a graph exists */
   const [boot, setBoot] = useState<"loading" | "splash" | "workspace">("loading");
 
@@ -113,6 +117,7 @@ export default function App() {
 
   useEffect(() => {
     const s = loadSession();
+    setSessionHistory(loadSessionHistory());
     if (s) {
       setQuestion(s.question);
       setGraph(s.graph);
@@ -284,6 +289,8 @@ export default function App() {
   };
 
   const handleGoHome = () => {
+    archiveSession({ question, graph });
+    setSessionHistory(loadSessionHistory());
     setGraph(null);
     setSelectedIds([]);
     setDeepMd("");
@@ -435,6 +442,21 @@ export default function App() {
                 New session
               </button>
             </div>
+            {sessionHistory.length > 0 && (
+              <div className="session-history">
+                <p className="hint small">Recent sessions</p>
+                <ul className="session-list">
+                  {sessionHistory.slice(0, 5).map((s) => (
+                    <li key={s.id} className="session-item">
+                      <div className="session-title">{s.question}</div>
+                      <div className="session-meta">
+                        {new Date(s.at).toLocaleString()} · {s.nodeCount} nodes · {s.edgeCount} edges
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {status && <p className="status">{status}</p>}
