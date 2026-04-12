@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -17,15 +16,18 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import {
+  attachPapers,
   expandGraph,
+  expandPaperKeywords,
   expandSelection,
   health,
 } from "./api";
 import { DeepAnswerPage } from "./DeepAnswerPage";
+import { HomePage } from "./figma/HomePage";
+import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
-import { mindGraphToFlow, type LayoutMode } from "./layout";
+import { mindGraphToFlow } from "./layout";
 import { MindNode } from "./MindNode";
-import { SkeletonMindMap } from "./SkeletonMindMap";
 import {
   clearSession,
   downloadMarkdown,
@@ -70,19 +72,16 @@ export default function App() {
     openAlexMailto: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("tree");
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
+  const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
   const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
+  const [deepPanelOpen, setDeepPanelOpen] = useState(false);
+  const [paperQuery, setPaperQuery] = useState("");
+  /** After splash: main workspace (sidebar + canvas) even before a graph exists */
+  const [boot, setBoot] = useState<"loading" | "splash" | "workspace">("loading");
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [staggerReveal, setStaggerReveal] = useState(false);
-  const edgeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  useEffect(() => {
-    return () => edgeTimersRef.current.forEach(clearTimeout);
-  }, []);
 
   useEffect(() => {
     health()
@@ -95,6 +94,9 @@ export default function App() {
     if (s) {
       setQuestion(s.question);
       setGraph(s.graph);
+      setBoot(s.graph ? "workspace" : "splash");
+    } else {
+      setBoot("splash");
     }
   }, []);
 
@@ -103,46 +105,15 @@ export default function App() {
   }, [question, graph]);
 
   useEffect(() => {
-    edgeTimersRef.current.forEach(clearTimeout);
-    edgeTimersRef.current = [];
-
     if (!graph) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const doStagger = staggerReveal;
-    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode, doStagger);
+    const { nodes: n, edges: e } = mindGraphToFlow(graph);
     setNodes(n);
     setEdges(e);
-
-    if (doStagger) {
-      const grouped = new Map<number, string[]>();
-      for (const edge of e) {
-        const delay = edge.data?.revealDelay ?? 0;
-        if (!grouped.has(delay)) grouped.set(delay, []);
-        grouped.get(delay)!.push(edge.id);
-      }
-
-      for (const [delay, ids] of grouped) {
-        const idSet = new Set(ids);
-        const timer = setTimeout(() => {
-          setEdges((prev) =>
-            prev.map((ed) =>
-              idSet.has(ed.id) ? { ...ed, style: { ...ed.style, opacity: 1 } } : ed,
-            ),
-          );
-        }, delay + 200);
-        edgeTimersRef.current.push(timer);
-      }
-
-      const maxDelay = Math.max(...[...grouped.keys()], 0);
-      const clearTimer = setTimeout(() => {
-        setStaggerReveal(false);
-      }, maxDelay + 600);
-      edgeTimersRef.current.push(clearTimer);
-    }
-  }, [graph, layoutMode, staggerReveal, setEdges, setNodes]);
+  }, [graph, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -151,109 +122,18 @@ export default function App() {
       .filter(Boolean) as GraphNode[];
   }, [graph, selectedIds]);
 
-  const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
-
-  const handleNodeExpand = useCallback(
-    (nodeId: string) => {
-      if (!graph || busy) return;
-      const node = graphNodeById(graph, nodeId);
-      if (!node) return;
-      setSelectedIds([nodeId]);
-      setBusy(true);
-      setStatus("Expanding selection…");
-      const sel = [{ id: node.id, label: node.label, kind: node.kind }];
-      expandSelection(question, graph, sel)
-        .then(({ graph: g }) => {
-          setGraph(g);
-          setStatus("Merged new nodes.");
-        })
-        .catch((e) => setStatus((e as Error).message))
-        .finally(() => setBusy(false));
-    },
-    [graph, busy, question],
-  );
-
-  const handleNodeDeep = useCallback(
-    (nodeId: string) => {
-      if (!graph) return;
-      const node = graphNodeById(graph, nodeId);
-      if (!node) return;
-      const ancestors = getAncestorLabels(graph, node.id);
-      setDeepPageAncestors(ancestors);
-      setDeepPageNodeId(node.id);
-      setDeepPageKeyword(node.label);
-    },
-    [graph],
-  );
-
   useEffect(() => {
-    if (!graph) return;
-
-    const selectedSet = new Set(selectedIds);
-    const connectedNodes = new Set<string>();
-    const connectedEdges = new Set<string>();
-    const hasSelection = selectedIds.length > 0;
-
-    for (const edge of graph.edges) {
-      const srcSel = selectedSet.has(edge.source);
-      const tgtSel = selectedSet.has(edge.target);
-      if (srcSel || tgtSel) {
-        if (srcSel) connectedNodes.add(edge.target);
-        if (tgtSel) connectedNodes.add(edge.source);
-        connectedEdges.add(edge.id);
-      }
+    if (selectedNodes.length === 1) {
+      setPaperQuery(selectedNodes[0]!.label);
     }
-    for (const id of selectedIds) connectedNodes.delete(id);
+  }, [selectedNodes]);
 
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          connected: connectedNodes.has(n.id),
-          dimmed: hasSelection && !selectedSet.has(n.id) && !connectedNodes.has(n.id),
-          onExpand: handleNodeExpand,
-          onDeep: handleNodeDeep,
-          busy,
-        },
-      })),
+  const allSelectedArePapers = useMemo(() => {
+    return (
+      selectedNodes.length > 0 &&
+      selectedNodes.every((n) => n.kind === "paper" && n.openAlexId)
     );
-
-    setEdges((eds) =>
-      eds.map((e) => {
-        const graphEdge = graph.edges.find((ge) => ge.id === e.id);
-        if (connectedEdges.has(e.id)) {
-          return {
-            ...e,
-            animated: true,
-            style: { ...e.style, stroke: "#818cf8", strokeWidth: 2.5 },
-            className: "edge-connected",
-          };
-        }
-        if (graphEdge) {
-          return {
-            ...e,
-            animated:
-              layoutMode === "tree" &&
-              (graphEdge.kind === "expands_to" || graphEdge.kind === "has_keyword"),
-            style: {
-              ...e.style,
-              stroke: graphEdge.kind === "has_keyword" ? "#0d9488" : "#475569",
-              strokeWidth:
-                layoutMode === "radial"
-                  ? 1
-                  : graphEdge.kind === "has_keyword"
-                    ? 1.6
-                    : 1.2,
-              opacity: hasSelection ? 0.25 : 1,
-            },
-            className: undefined,
-          };
-        }
-        return e;
-      }),
-    );
-  }, [graph, selectedIds, layoutMode, busy, handleNodeExpand, handleNodeDeep, setNodes, setEdges]);
+  }, [selectedNodes]);
 
   const onNodeClick = useCallback((evt: ReactMouseEvent, node: Node) => {
     setSelectedIds((prev) => {
@@ -270,14 +150,14 @@ export default function App() {
     setSelectedIds([]);
   }, []);
 
-  const runExpand = async () => {
+  const runExpand = async (q?: string) => {
+    const query = q ?? question;
+    if (!query.trim()) return;
+    if (q) setQuestion(q);
     setBusy(true);
-    setGenerating(true);
-    setGraph(null);
     setStatus("Expanding question…");
     try {
-      const { graph: g } = await expandGraph(question);
-      setStaggerReveal(true);
+      const { graph: g } = await expandGraph(query);
       setGraph(g);
       setSelectedIds([]);
       setDeepMd("");
@@ -286,13 +166,31 @@ export default function App() {
       setStatus((e as Error).message);
     } finally {
       setBusy(false);
-      setGenerating(false);
     }
   };
 
   const runExpandSelection = async () => {
     if (!graph || !selectedNodes.length) return;
     setBusy(true);
+
+    if (allSelectedArePapers) {
+      setStatus("Fetching keywords from OpenAlex…");
+      try {
+        let g = graph;
+        for (const n of selectedNodes) {
+          const result = await expandPaperKeywords(g, n.id);
+          g = result.graph;
+        }
+        setGraph(g);
+        setStatus("Keywords expanded from OpenAlex.");
+      } catch (e) {
+        setStatus((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     setStatus("Expanding selection…");
     try {
       const sel = selectedNodes.map((n) => ({
@@ -310,6 +208,22 @@ export default function App() {
     }
   };
 
+  const runPapers = async () => {
+    if (!graph || selectedIds.length !== 1) return;
+    const kid = selectedIds[0]!;
+    setBusy(true);
+    setStatus("Fetching OpenAlex…");
+    try {
+      const { graph: g } = await attachPapers(graph, kid, (paperQuery || graphNodeById(graph, kid)?.label) ?? "");
+      setGraph(g);
+      setStatus("Papers attached. Data: OpenAlex.");
+    } catch (e) {
+      setStatus((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runDeep = () => {
     if (!graph || selectedIds.length !== 1) return;
     const node = graphNodeById(graph, selectedIds[0]!);
@@ -320,7 +234,6 @@ export default function App() {
     setDeepPageKeyword(node.label);
   };
 
-
   const exportMd = () => {
     if (!graph) return;
     const md = exportMarkdown(question, graph);
@@ -330,6 +243,8 @@ export default function App() {
     );
     setStatus("Markdown downloaded.");
   };
+
+  /* ── Pin paper from Deep Answer back into the graph ── */
 
   const pinnedUrls = useMemo(() => {
     if (!graph) return new Set<string>();
@@ -372,6 +287,21 @@ export default function App() {
     [graph, deepPageNodeId],
   );
 
+  const handleGoHome = () => {
+    setGraph(null);
+    setSelectedIds([]);
+    setDeepMd("");
+    setQuestion("");
+    setStatus("");
+    clearSession();
+    setBoot("workspace");
+  };
+
+  const finishSplash = useCallback(() => {
+    setBoot("workspace");
+  }, []);
+
+  // Deep Answer page (full-screen)
   if (deepPageKeyword) {
     return (
       <DeepAnswerPage
@@ -385,40 +315,49 @@ export default function App() {
     );
   }
 
+  if (boot === "loading") {
+    return (
+      <div className="fg-boot-screen" aria-busy="true" aria-label="Loading Polaris">
+        <div className="fg-boot-pulse" />
+      </div>
+    );
+  }
+
+  if (boot === "splash") {
+    return <HomePage onContinue={finishSplash} />;
+  }
+
+  // Main workspace (graph may still be null — ask from command bar)
   return (
     <div className="app">
-      <header className="top">
-        <div className="brand">
-          <strong>Polaris</strong>
-          <span className="sub">keywords · graph · OpenAlex</span>
+      {/* Figma Navbar */}
+      <header className="fg-navbar">
+        <button className="fg-navbar-brand" type="button" onClick={handleGoHome}>
+          Polaris
+        </button>
+        <div className="navbar-right">
+          {apiHealth && (
+            <span className="navbar-health">
+              LLM: {apiHealth.llm ? "on" : "mock"} · OpenAlex:{" "}
+              {apiHealth.openAlexMailto ? "set" : "—"}
+            </span>
+          )}
         </div>
-        {apiHealth && (
-          <div className="health">
-            LLM: {apiHealth.llm ? "on" : "mock"} · OpenAlex mailto:{" "}
-            {apiHealth.openAlexMailto ? "set" : "optional"}
-          </div>
-        )}
       </header>
 
       <div className="main">
         <aside className="sidebar">
-          <label className="lbl">Your question</label>
-          <textarea
-            className="q"
-            rows={4}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g. What is federated learning and what are the main privacy risks?"
-          />
-          <div className="row">
-            <button type="button" disabled={busy || !question.trim()} onClick={runExpand}>
-              Generate mind map
-            </button>
-          </div>
-
-          <div className="panel-section">
+          {/* Selection */}
+          <div className="panel-section" style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
             <h3>Selection</h3>
-            <p className="hint">Click a node. Shift+click to multi-select.</p>
+            {!graph && (
+              <p className="hint">
+                Enter a research question in the bar below, then generate your first graph.
+              </p>
+            )}
+            {graph && (
+              <p className="hint">Click a node. Shift+click to multi-select.</p>
+            )}
             <ul className="sel">
               {selectedNodes.map((n) => (
                 <li key={n.id}>
@@ -432,7 +371,7 @@ export default function App() {
                 disabled={busy || !graph || selectedNodes.length === 0}
                 onClick={runExpandSelection}
               >
-                Expand selected (LLM)
+                {allSelectedArePapers ? "Expand keywords (OpenAlex)" : "Expand selected (LLM)"}
               </button>
               <button
                 type="button"
@@ -445,48 +384,40 @@ export default function App() {
             </div>
           </div>
 
-
+          {/* OpenAlex papers */}
           <div className="panel-section">
-            <h3>Layout</h3>
-            <div className="layout-toggle">
-              <button
-                type="button"
-                className={`layout-btn${layoutMode === "tree" ? " layout-active" : ""}`}
-                onClick={() => setLayoutMode("tree")}
-              >
-                <span className="layout-icon">→</span> Tree
-              </button>
-              <button
-                type="button"
-                className={`layout-btn${layoutMode === "radial" ? " layout-active" : ""}`}
-                onClick={() => setLayoutMode("radial")}
-              >
-                <span className="layout-icon">◎</span> Graph
-              </button>
-            </div>
+            <h3>OpenAlex papers</h3>
+            <label className="lbl">Search query</label>
+            <input
+              className="inp"
+              value={paperQuery}
+              onChange={(e) => setPaperQuery(e.target.value)}
+              placeholder="English keywords work best"
+            />
+            <button
+              type="button"
+              disabled={busy || !graph || selectedIds.length !== 1}
+              onClick={runPapers}
+            >
+              Attach papers to selected node
+            </button>
+            <p className="hint small">
+              Attribution:{" "}
+              <a href="https://openalex.org" target="_blank" rel="noreferrer">
+                OpenAlex
+              </a>
+            </p>
           </div>
 
+          {/* Session */}
           <div className="panel-section">
             <h3>Session</h3>
             <div className="row stack">
-              <button
-                type="button"
-                disabled={!graph}
-                onClick={exportMd}
-              >
+              <button type="button" disabled={!graph} onClick={exportMd}>
                 Export Markdown
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  clearSession();
-                  setGraph(null);
-                  setSelectedIds([]);
-                  setDeepMd("");
-                  setStatus("Cleared.");
-                }}
-              >
-                Clear saved session
+              <button type="button" onClick={handleGoHome}>
+                New session
               </button>
             </div>
           </div>
@@ -495,34 +426,78 @@ export default function App() {
         </aside>
 
         <section className="canvas-wrap">
-          <div className="flow">
-            {generating ? (
-              <SkeletonMindMap />
-            ) : (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                nodeTypes={nodeTypes}
-                fitView
-                minZoom={0.2}
-                maxZoom={1.5}
-              >
-                <MiniMap pannable zoomable />
-                <Controls />
-                <Background gap={16} color="#1e293b" />
-              </ReactFlow>
-            )}
+          {/* Floating command bar */}
+          <div className="floating-cmdbar">
+            <form className="fg-cmdbar" onSubmit={(e) => { e.preventDefault(); runExpand(); }}>
+              <div className="fg-cmdbar-inner">
+                <img className="fg-cmdbar-icon" src="/assets/search-icon.svg" alt="" />
+                <input
+                  className="fg-cmdbar-input"
+                  type="text"
+                  placeholder="Ask a research question..."
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                />
+                {question && (
+                  <button
+                    className="fg-cmdbar-clear"
+                    type="button"
+                    onClick={() => setQuestion("")}
+                  >
+                    &times;
+                  </button>
+                )}
+                <button
+                  className="fg-cmdbar-submit"
+                  type="submit"
+                  disabled={busy || !question.trim()}
+                >
+                  {graph ? "Regenerate" : "Generate graph"}
+                </button>
+              </div>
+            </form>
           </div>
-          <div className="deep-panel">
-            <h3>Deep panel</h3>
-            {deepMd ? (
-              <pre className="md">{deepMd}</pre>
-            ) : (
-              <p className="muted">Run “Deep answer” after selecting nodes.</p>
+
+          {/* Graph canvas */}
+          <div className="flow">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              nodeTypes={nodeTypes}
+              fitView
+              minZoom={0.2}
+              maxZoom={1.5}
+            >
+              <MiniMap pannable zoomable />
+              <Controls />
+              <Background gap={24} color="rgba(75, 85, 99, 0.15)" />
+            </ReactFlow>
+          </div>
+
+          {/* Deep panel */}
+          <div className="fg-deep-panel">
+            <button
+              className="fg-dp-toggle"
+              type="button"
+              onClick={() => setDeepPanelOpen(!deepPanelOpen)}
+            >
+              {deepPanelOpen ? "\u25BC" : "\u25B2"} Deep Panel &middot;{" "}
+              {deepMd ? "Ready" : "Select a node"}
+            </button>
+            {deepPanelOpen && (
+              <div className="fg-dp-content">
+                {deepMd ? (
+                  <pre className="md">{deepMd}</pre>
+                ) : (
+                  <p className="fg-dp-empty">
+                    Run &quot;Deep Answer&quot; after selecting a node to see a research summary.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </section>
