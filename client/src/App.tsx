@@ -17,6 +17,7 @@ import "reactflow/dist/style.css";
 
 import {
   attachPapers,
+  extractKeywordsFromStarredPapers,
   expandGraph,
   expandPaperKeywords,
   expandSelection,
@@ -31,12 +32,16 @@ import { MindNode } from "./MindNode";
 import {
   archiveSession,
   clearSession,
+  createDefaultWorkspace,
   downloadMarkdown,
   exportMarkdown,
   loadSessionHistory,
   loadSession,
+  loadWorkspaceStore,
   saveSession,
+  saveWorkspaceStore,
   type SessionRecord,
+  type WorkspaceItem,
 } from "./persistence";
 
 const nodeTypes = { mind: MindNode };
@@ -103,6 +108,8 @@ export default function App() {
   const [paperQuery, setPaperQuery] = useState("");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("radial");
   const [sessionHistory, setSessionHistory] = useState<SessionRecord[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
   /** After splash: main workspace (sidebar + canvas) even before a graph exists */
   const [boot, setBoot] = useState<"loading" | "splash" | "workspace">("loading");
 
@@ -116,20 +123,65 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const s = loadSession();
-    setSessionHistory(loadSessionHistory());
-    if (s) {
-      setQuestion(s.question);
-      setGraph(s.graph);
-      setBoot(s.graph ? "workspace" : "splash");
-    } else {
-      setBoot("splash");
+    const store = loadWorkspaceStore();
+    const legacy = loadSession();
+    const migratedItems = [...store.items];
+    if (
+      legacy
+      && migratedItems.length > 0
+      && !migratedItems.some((w) => w.graph || w.question.trim())
+      && (legacy.graph || legacy.question.trim())
+    ) {
+      migratedItems[0] = {
+        ...migratedItems[0]!,
+        question: legacy.question,
+        graph: legacy.graph,
+      };
     }
+    const active = migratedItems.find((w) => w.id === store.activeId) ?? migratedItems[0]!;
+    setWorkspaces(migratedItems);
+    setActiveWorkspaceId(active.id);
+    setQuestion(active.question);
+    setGraph(active.graph);
+    setSessionHistory(loadSessionHistory());
+    setBoot(active.graph ? "workspace" : "splash");
   }, []);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
+    if (!ws) return;
+    setQuestion(ws.question);
+    setGraph(ws.graph);
+    setSelectedIds([]);
+    setDeepMd("");
+    setDeepPageKeyword(null);
+  }, [activeWorkspaceId, workspaces]);
 
   useEffect(() => {
     saveSession({ question, graph });
   }, [question, graph]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId || workspaces.length === 0) return;
+    setWorkspaces((prev) => prev.map((ws) => {
+      if (ws.id !== activeWorkspaceId) return ws;
+      if (ws.question === question && ws.graph === graph) return ws;
+      return {
+        ...ws,
+        question,
+        graph,
+      };
+    }));
+  }, [question, graph, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId || workspaces.length === 0) return;
+    saveWorkspaceStore({
+      activeId: activeWorkspaceId,
+      items: workspaces,
+    });
+  }, [activeWorkspaceId, workspaces]);
 
   useEffect(() => {
     if (!graph) {
@@ -210,6 +262,31 @@ export default function App() {
       setStatus("Graph ready.");
     } catch (e) {
       setStatus((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useStarredPapersForKeywords = async (payload: {
+    sessionId: string;
+    keywordNodeId: string;
+    starredOpenAlexUrls: string[];
+  }) => {
+    if (!graph) throw new Error("Graph not loaded.");
+    setBusy(true);
+    setStatus("Extracting keywords from starred papers...");
+    try {
+      const { graph: g, keywordCount, usedPapers } = await extractKeywordsFromStarredPapers(
+        graph,
+        payload.keywordNodeId,
+        payload.sessionId,
+        payload.starredOpenAlexUrls,
+      );
+      setGraph(g);
+      setStatus(`Added ${keywordCount} keywords from ${usedPapers} starred papers.`);
+    } catch (e) {
+      setStatus((e as Error).message);
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -302,6 +379,45 @@ export default function App() {
     setBoot("workspace");
   };
 
+  const createWorkspace = () => {
+    const nextIndex = workspaces.length + 1;
+    const next = createDefaultWorkspace(`Workspace ${nextIndex}`);
+    setWorkspaces((prev) => [...prev, next]);
+    setActiveWorkspaceId(next.id);
+    setQuestion("");
+    setGraph(null);
+    setSelectedIds([]);
+    setDeepMd("");
+    setStatus(`Created ${next.name}.`);
+    setBoot("workspace");
+  };
+
+  const renameWorkspace = (id: string) => {
+    const ws = workspaces.find((w) => w.id === id);
+    if (!ws) return;
+    const nextName = window.prompt("Workspace name", ws.name)?.trim();
+    if (!nextName) return;
+    setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, name: nextName } : w)));
+  };
+
+  const deleteWorkspace = (id: string) => {
+    if (workspaces.length <= 1) return;
+    const ws = workspaces.find((w) => w.id === id);
+    if (!ws) return;
+    if (!window.confirm(`Delete ${ws.name}?`)) return;
+
+    const remaining = workspaces.filter((w) => w.id !== id);
+    setWorkspaces(remaining);
+    if (activeWorkspaceId === id) {
+      const fallback = remaining[0]!;
+      setActiveWorkspaceId(fallback.id);
+      setQuestion(fallback.question);
+      setGraph(fallback.graph);
+      setSelectedIds([]);
+      setDeepMd("");
+    }
+  };
+
   const finishSplash = useCallback(() => {
     setBoot("workspace");
   }, []);
@@ -310,10 +426,12 @@ export default function App() {
   if (deepPageKeyword) {
     return (
       <DeepAnswerPage
+        workspaceId={activeWorkspaceId}
         keyword={deepPageKeyword}
         keywordNodeId={deepPageNodeId!}
         ancestors={deepPageAncestors}
         onBack={() => setDeepPageKeyword(null)}
+        onUseStarredKeywords={useStarredPapersForKeywords}
       />
     );
   }
@@ -338,6 +456,51 @@ export default function App() {
         <button className="fg-navbar-brand" type="button" onClick={handleGoHome}>
           Polaris
         </button>
+        <div className="workspace-tabs" aria-label="Workspace tabs">
+          {workspaces.map((ws) => {
+            const active = ws.id === activeWorkspaceId;
+            return (
+              <div key={ws.id} className={`workspace-tab${active ? " workspace-tab-active" : ""}`}>
+                <button
+                  type="button"
+                  className="workspace-tab-main"
+                  onClick={() => setActiveWorkspaceId(ws.id)}
+                  title={ws.name}
+                >
+                  {ws.name}
+                </button>
+                <button
+                  type="button"
+                  className="workspace-tab-icon"
+                  onClick={() => renameWorkspace(ws.id)}
+                  title="Rename workspace"
+                  aria-label="Rename workspace"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  className="workspace-tab-icon"
+                  onClick={() => deleteWorkspace(ws.id)}
+                  title={workspaces.length <= 1 ? "At least one workspace is required" : "Delete workspace"}
+                  aria-label="Delete workspace"
+                  disabled={workspaces.length <= 1}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            className="workspace-tab-add"
+            onClick={createWorkspace}
+            title="Create workspace"
+            aria-label="Create workspace"
+          >
+            +
+          </button>
+        </div>
         <div className="navbar-right">
           {apiHealth && (
             <span className="navbar-health">
@@ -440,8 +603,8 @@ export default function App() {
               <button type="button" disabled={!graph} onClick={exportMd}>
                 Export Markdown
               </button>
-              <button type="button" onClick={handleGoHome}>
-                New session
+              <button type="button" onClick={createWorkspace}>
+                New workspace
               </button>
             </div>
             {sessionHistory.length > 0 && (

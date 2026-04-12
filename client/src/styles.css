@@ -29,6 +29,79 @@ a {
   gap: 12px;
 }
 
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  margin-right: auto;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  background: #121214;
+  overflow: hidden;
+}
+
+.workspace-tab-active {
+  border-color: rgba(255, 211, 105, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 211, 105, 0.12);
+}
+
+.workspace-tab-main {
+  border: 0;
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  max-width: 180px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.workspace-tab-icon {
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.workspace-tab-icon:hover:not(:disabled),
+.workspace-tab-main:hover {
+  background: #1c1c1e;
+  color: #ffd369;
+}
+
+.workspace-tab-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.workspace-tab-add {
+  border: 1px dashed #3f3f46;
+  background: transparent;
+  color: #cbd5e1;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.workspace-tab-add:hover {
+  border-color: #ffd369;
+  color: #ffd369;
+}
+
 .navbar-health {
   font-size: 11px;
   color: #6b7280;

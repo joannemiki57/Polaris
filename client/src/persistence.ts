@@ -3,6 +3,7 @@ import type { MindGraph } from "./graphTypes";
 const KEY = "mindgraph_session_v1";
 const DEEP_PREFIX = "mindgraph_deep_session_v1:";
 const HISTORY_KEY = "mindgraph_session_history_v1";
+const WORKSPACES_KEY = "mindgraph_workspaces_v1";
 
 export type Session = {
   question: string;
@@ -41,8 +42,56 @@ export type SessionRecord = {
   edgeCount: number;
 };
 
-function deepKey(topicKey: string): string {
-  return `${DEEP_PREFIX}${topicKey.toLowerCase()}`;
+export type WorkspaceItem = {
+  id: string;
+  name: string;
+  question: string;
+  graph: MindGraph | null;
+};
+
+export type WorkspaceStore = {
+  activeId: string;
+  items: WorkspaceItem[];
+};
+
+function deepKey(workspaceId: string, topicKey: string): string {
+  return `${DEEP_PREFIX}${workspaceId.toLowerCase()}:${topicKey.toLowerCase()}`;
+}
+
+export function createDefaultWorkspace(name = "Workspace 1"): WorkspaceItem {
+  return {
+    id: `ws_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    question: "",
+    graph: null,
+  };
+}
+
+export function loadWorkspaceStore(): WorkspaceStore {
+  try {
+    const raw = localStorage.getItem(WORKSPACES_KEY);
+    if (!raw) {
+      const first = createDefaultWorkspace("Workspace 1");
+      return { activeId: first.id, items: [first] };
+    }
+    const parsed = JSON.parse(raw) as WorkspaceStore;
+    if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+      const first = createDefaultWorkspace("Workspace 1");
+      return { activeId: first.id, items: [first] };
+    }
+    const activeExists = parsed.items.some((w) => w.id === parsed.activeId);
+    return {
+      activeId: activeExists ? parsed.activeId : parsed.items[0]!.id,
+      items: parsed.items,
+    };
+  } catch {
+    const first = createDefaultWorkspace("Workspace 1");
+    return { activeId: first.id, items: [first] };
+  }
+}
+
+export function saveWorkspaceStore(store: WorkspaceStore) {
+  localStorage.setItem(WORKSPACES_KEY, JSON.stringify(store));
 }
 
 export function loadSession(): Session | null {
@@ -63,9 +112,9 @@ export function clearSession() {
   localStorage.removeItem(KEY);
 }
 
-export function loadDeepSession(topicKey: string): DeepSessionSnapshot | null {
+export function loadDeepSession(workspaceId: string, topicKey: string): DeepSessionSnapshot | null {
   try {
-    const raw = localStorage.getItem(deepKey(topicKey));
+    const raw = localStorage.getItem(deepKey(workspaceId, topicKey));
     if (!raw) return null;
     return JSON.parse(raw) as DeepSessionSnapshot;
   } catch {
@@ -73,12 +122,16 @@ export function loadDeepSession(topicKey: string): DeepSessionSnapshot | null {
   }
 }
 
-export function saveDeepSession(topicKey: string, snapshot: DeepSessionSnapshot) {
-  localStorage.setItem(deepKey(topicKey), JSON.stringify(snapshot));
+export function saveDeepSession(
+  workspaceId: string,
+  topicKey: string,
+  snapshot: DeepSessionSnapshot,
+) {
+  localStorage.setItem(deepKey(workspaceId, topicKey), JSON.stringify(snapshot));
 }
 
-export function clearDeepSession(topicKey: string) {
-  localStorage.removeItem(deepKey(topicKey));
+export function clearDeepSession(workspaceId: string, topicKey: string) {
+  localStorage.removeItem(deepKey(workspaceId, topicKey));
 }
 
 export function loadSessionHistory(): SessionRecord[] {

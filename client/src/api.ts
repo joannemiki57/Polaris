@@ -133,3 +133,15 @@ export async function deepAnswerReloadPapers(
     body: JSON.stringify({ sessionId, pinnedOpenAlexUrls, count }),
   });
 }
+
+export async function extractKeywordsFromStarredPapers(
+  graph: MindGraph,
+  attachToNodeId: string,
+  sessionId: string,
+  starredOpenAlexUrls: string[],
+): Promise<{ graph: MindGraph; keywordCount: number; usedPapers: number }> {
+  return j("/api/graph/keywords-from-starred-papers", {
+    method: "POST",
+    body: JSON.stringify({ graph, attachToNodeId, sessionId, starredOpenAlexUrls }),
+  });
+}

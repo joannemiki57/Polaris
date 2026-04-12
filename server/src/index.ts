@@ -186,6 +186,14 @@ function toOpenAlexUrl(id: string): string {
   return id.startsWith("http") ? id : `https://openalex.org/${id}`;
 }
 
+function slugifyKeyword(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+}
+
 function mapPapersForClient(papers: OpenAlexWorkDetailed[]) {
   return papers.map((p) => ({
     title: p.title ?? "Untitled",
@@ -467,6 +475,171 @@ app.post("/api/graph/expand-paper-keywords", apiLimiter, async (req, res) => {
     const { nodes: kwNodes, edges: kwEdges } = keywordsToGraphNodes(keywords, paperNodeId);
     const graph = mergeDelta(base, { new_nodes: kwNodes, new_edges: kwEdges });
     res.json({ graph });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/graph/keywords-from-starred-papers", apiLimiter, async (req, res) => {
+  try {
+    const base = req.body?.graph as MindGraph | undefined;
+    const attachToNodeId = String(req.body?.attachToNodeId ?? "").trim();
+    const sessionId = String(req.body?.sessionId ?? "").trim();
+    const starredOpenAlexUrls = Array.isArray(req.body?.starredOpenAlexUrls)
+      ? req.body.starredOpenAlexUrls.map((v: unknown) => String(v).trim()).filter(Boolean)
+      : [];
+
+    if (!base || !Array.isArray(base.nodes)) {
+      res.status(400).json({ error: "graph with nodes required" });
+      return;
+    }
+    if (!attachToNodeId) {
+      res.status(400).json({ error: "attachToNodeId required" });
+      return;
+    }
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
+    if (starredOpenAlexUrls.length === 0) {
+      res.status(400).json({ error: "starredOpenAlexUrls required" });
+      return;
+    }
+
+    const attachNode = base.nodes.find((n) => n.id === attachToNodeId);
+    if (!attachNode) {
+      res.status(400).json({ error: "attach target node not found" });
+      return;
+    }
+
+    const session = paperSessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session expired or not found. Please re-init." });
+      return;
+    }
+
+    const starredSet = new Set(starredOpenAlexUrls);
+    const starredPapers = session.papers.filter((p) => starredSet.has(toOpenAlexUrl(p.id))).slice(0, 12);
+    if (starredPapers.length === 0) {
+      res.status(400).json({ error: "No starred papers matched this session" });
+      return;
+    }
+
+    type KeywordCandidate = { label: string; summary: string; score: number };
+    const candidates = new Map<string, KeywordCandidate>();
+    const putCandidate = (label: string, summary: string, weight = 1) => {
+      const norm = label.trim().toLowerCase();
+      if (!norm) return;
+      const prev = candidates.get(norm);
+      if (prev) {
+        prev.score += weight;
+        if (summary.length > prev.summary.length) prev.summary = summary;
+        return;
+      }
+      candidates.set(norm, {
+        label: label.trim(),
+        summary: summary.trim() || "Keyword extracted from starred papers.",
+        score: weight,
+      });
+    };
+
+    for (const paper of starredPapers) {
+      const title = paper.title ?? "Untitled";
+
+      try {
+        const sections = await fetchPaperSections(title, undefined, S2_API_KEY);
+        for (const sec of sections.slice(0, 8)) {
+          putCandidate(
+            sec.name,
+            `Section heading in starred paper \"${title}\" (${sec.snippetCount} snippets).`,
+            2,
+          );
+        }
+      } catch {
+        // Section API may fail for some papers; continue with other sources.
+      }
+
+      try {
+        const detail = await fetchWorkDetail(paper.id, OPENALEX_MAILTO);
+
+        for (const topic of detail.topics.slice(0, 8)) {
+          putCandidate(
+            topic.displayName,
+            topic.subfield
+              ? `OpenAlex topic from subfield: ${topic.subfield}.`
+              : "OpenAlex topic from starred papers.",
+            1,
+          );
+        }
+
+        if (GEMINI_KEY && (detail.topics.length > 0 || detail.abstract)) {
+          try {
+            const llmKeywords = await extractPaperSectionKeywords(
+              GEMINI_KEY,
+              {
+                title,
+                topics: detail.topics.map((t) => ({
+                  displayName: t.displayName,
+                  score: t.score,
+                  subfield: t.subfield,
+                })),
+                abstract: detail.abstract,
+              },
+              GEMINI_MODEL,
+            );
+            for (const kw of llmKeywords.slice(0, 10)) {
+              putCandidate(kw.label, kw.summary, 3);
+            }
+          } catch {
+            // LLM extraction may fail for some papers; keep deterministic candidates.
+          }
+        }
+      } catch {
+        // OpenAlex detail call may fail for some papers.
+      }
+    }
+
+    const ranked = [...candidates.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 24);
+
+    if (ranked.length === 0) {
+      res.json({ graph: base, keywordCount: 0, usedPapers: starredPapers.length });
+      return;
+    }
+
+    const existingIds = new Set(base.nodes.map((n) => n.id));
+    const newNodes = ranked.map((kw, idx) => {
+      const seed = slugifyKeyword(kw.label) || `kw_${idx}`;
+      let nodeId = `star_kw_${seed}`;
+      let bump = 1;
+      while (existingIds.has(nodeId)) {
+        nodeId = `star_kw_${seed}_${bump}`;
+        bump += 1;
+      }
+      existingIds.add(nodeId);
+      return {
+        id: nodeId,
+        kind: "keyword" as const,
+        label: kw.label,
+        summary: kw.summary,
+      };
+    });
+
+    const newEdges: GraphEdge[] = newNodes.map((n, i) => ({
+      id: `spk_${attachToNodeId}_${n.id}_${i}`,
+      source: attachToNodeId,
+      target: n.id,
+      kind: "has_keyword",
+    }));
+
+    const graph = mergeDelta(base, { new_nodes: newNodes, new_edges: newEdges });
+    res.json({
+      graph,
+      keywordCount: newNodes.length,
+      usedPapers: starredPapers.length,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });

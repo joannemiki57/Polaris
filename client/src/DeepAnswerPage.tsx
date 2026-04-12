@@ -10,10 +10,16 @@ import {
 import { loadDeepSession, saveDeepSession } from "./persistence";
 
 interface Props {
+  workspaceId: string;
   keyword: string;
   keywordNodeId: string;
   ancestors: string[];
   onBack: () => void;
+  onUseStarredKeywords: (payload: {
+    sessionId: string;
+    keywordNodeId: string;
+    starredOpenAlexUrls: string[];
+  }) => Promise<void>;
 }
 
 function renderMarkdown(md: string): string {
@@ -34,11 +40,18 @@ function renderMarkdown(md: string): string {
     .replace(/\n/g, "<br/>");
 }
 
-export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancestors, onBack }: Props) {
+export function DeepAnswerPage({
+  workspaceId,
+  keyword,
+  keywordNodeId,
+  ancestors,
+  onBack,
+  onUseStarredKeywords,
+}: Props) {
   const searchKeyword = ancestors.length > 0
     ? [...ancestors].reverse().concat(keyword).join(" ")
     : keyword;
-  const starsStorageKey = `deep-stars:${searchKeyword.toLowerCase()}`;
+  const starsStorageKey = `deep-stars:${workspaceId}:${searchKeyword.toLowerCase()}`;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [papers, setPapers] = useState<DeepPaper[]>([]);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -50,6 +63,7 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   const [morePaperCount, setMorePaperCount] = useState(10);
   const [addingPapers, setAddingPapers] = useState(false);
   const [reloadingPapers, setReloadingPapers] = useState(false);
+  const [extractingKeywords, setExtractingKeywords] = useState(false);
   const [starredUrls, setStarredUrls] = useState<Set<string>>(new Set());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -108,7 +122,7 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   }, [searchKeyword]);
 
   useEffect(() => {
-    const snapshot = loadDeepSession(searchKeyword);
+    const snapshot = loadDeepSession(workspaceId, searchKeyword);
     if (snapshot && (snapshot.sessionId || snapshot.papers.length > 0 || snapshot.messages.length > 0 || snapshot.input.trim())) {
       setSessionId(snapshot.sessionId);
       setPapers(snapshot.papers as DeepPaper[]);
@@ -118,19 +132,19 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
       return;
     }
     init();
-  }, [init, searchKeyword]);
+  }, [init, searchKeyword, workspaceId]);
 
   useEffect(() => {
     const hasState = Boolean(sessionId) || papers.length > 0 || messages.length > 0 || input.trim().length > 0;
     if (!hasState) return;
-    saveDeepSession(searchKeyword, {
+    saveDeepSession(workspaceId, searchKeyword, {
       sessionId,
       papers,
       messages,
       input,
       updatedAt: new Date().toISOString(),
     });
-  }, [searchKeyword, sessionId, papers, messages, input]);
+  }, [workspaceId, searchKeyword, sessionId, papers, messages, input]);
 
   const send = async () => {
     if (!input.trim() || !sessionId || sending) return;
@@ -217,6 +231,31 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     }
   };
 
+  const applyStarredKeywords = async () => {
+    if (!sessionId || extractingKeywords) return;
+    const starredOpenAlexUrls = papers
+      .filter((p) => starredUrls.has(p.openAlexUrl))
+      .map((p) => p.openAlexUrl);
+    if (starredOpenAlexUrls.length === 0) {
+      setError("Star at least one paper to extract keywords.");
+      return;
+    }
+    setExtractingKeywords(true);
+    setError(null);
+    try {
+      await onUseStarredKeywords({
+        sessionId,
+        keywordNodeId,
+        starredOpenAlexUrls,
+      });
+      onBack();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExtractingKeywords(false);
+    }
+  };
+
   return (
     <div className="da-page">
       <nav className="da-nav">
@@ -259,6 +298,16 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
                   onClick={reloadPapers}
                 >
                   {reloadingPapers ? "Reloading..." : "Reload"}
+                </button>
+                <button
+                  type="button"
+                  className="da-reload-papers-btn"
+                  title="Extract keywords from starred papers and attach to current keyword node"
+                  aria-label="Extract keywords from starred papers"
+                  disabled={extractingKeywords || pinnedVisibleCount === 0 || !sessionId}
+                  onClick={applyStarredKeywords}
+                >
+                  {extractingKeywords ? "Extracting..." : "Use Starred"}
                 </button>
                 <div className="da-add-papers-wrap" ref={addMenuRef}>
                   <button
