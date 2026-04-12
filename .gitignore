@@ -48,5 +48,5 @@ client/dist/
 .githooks/
 scripts/session-changelog-hook.sh
 
-# Obsidian (optional: reduce noisy machine-specific UI state)
+# Obsidian local workspace metadata (keep out of shared git history)
 Cursor Hack/.obsidian/

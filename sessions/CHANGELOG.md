@@ -25,6 +25,7 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 - 2026-04-12: Updated the Recent sessions delete toggle to the standard trash can emoji (🗑️) for clearer deletion affordance.
 - 2026-04-12: Made graph zoom controls reposition upward responsively on shorter viewport heights to keep critical controls visible while resizing.
 - 2026-04-12: Kept the research question command bar bottom-anchored while making it push upward responsively on short heights; also locked the app/canvas layout to the viewport to prevent right-pane page scrolling.
+- 2026-04-12: Expanded git ignore coverage for local Obsidian workspace metadata (`Cursor Hack/.obsidian/`) and cleaned tracked machine-specific files from the branch.
 
 - 2026-04-12: Removed the inline Deep Panel UI from the main workspace for a cleaner, single-path Deep Answer flow.
 
