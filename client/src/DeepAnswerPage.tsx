@@ -222,7 +222,10 @@ export function DeepAnswerPage({
         pinnedOpenAlexUrls,
         papers.length,
       );
-      setPapers(next);
+      const sorted = [...next].sort(
+        (a, b) => (b.citedByCount ?? 0) - (a.citedByCount ?? 0),
+      );
+      setPapers(sorted);
       setAddMenuOpen(false);
     } catch (e) {
       setError((e as Error).message);
@@ -298,16 +301,6 @@ export function DeepAnswerPage({
                   onClick={reloadPapers}
                 >
                   {reloadingPapers ? "Reloading..." : "Reload"}
-                </button>
-                <button
-                  type="button"
-                  className="da-reload-papers-btn"
-                  title="Extract keywords from starred papers and attach to current keyword node"
-                  aria-label="Extract keywords from starred papers"
-                  disabled={extractingKeywords || pinnedVisibleCount === 0 || !sessionId}
-                  onClick={applyStarredKeywords}
-                >
-                  {extractingKeywords ? "Extracting..." : "Use Starred"}
                 </button>
                 <div className="da-add-papers-wrap" ref={addMenuRef}>
                   <button
