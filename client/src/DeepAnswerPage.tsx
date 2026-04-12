@@ -3,6 +3,7 @@ import {
   deepAnswerChat,
   deepAnswerInit,
   deepAnswerMorePapers,
+  deepAnswerReloadPapers,
   type ChatMsg,
   type DeepPaper,
 } from "./api";
@@ -47,6 +48,7 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [morePaperCount, setMorePaperCount] = useState(10);
   const [addingPapers, setAddingPapers] = useState(false);
+  const [reloadingPapers, setReloadingPapers] = useState(false);
   const [starredUrls, setStarredUrls] = useState<Set<string>>(new Set());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -156,6 +158,33 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     });
   };
 
+  const pinnedVisibleCount = papers.reduce(
+    (acc, p) => (starredUrls.has(p.openAlexUrl) ? acc + 1 : acc),
+    0,
+  );
+
+  const reloadPapers = async () => {
+    if (!sessionId || reloadingPapers || papers.length === 0) return;
+    setReloadingPapers(true);
+    setError(null);
+    try {
+      const pinnedOpenAlexUrls = papers
+        .filter((p) => starredUrls.has(p.openAlexUrl))
+        .map((p) => p.openAlexUrl);
+      const { papers: next } = await deepAnswerReloadPapers(
+        sessionId,
+        pinnedOpenAlexUrls,
+        papers.length,
+      );
+      setPapers(next);
+      setAddMenuOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setReloadingPapers(false);
+    }
+  };
+
   return (
     <div className="da-page">
       <nav className="da-nav">
@@ -184,51 +213,67 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
           <div className="da-sidebar-head">
             <h3 className="da-sidebar-title">Source Papers</h3>
             {sessionId && !loading && (
-              <div className="da-add-papers-wrap" ref={addMenuRef}>
+              <div className="da-paper-actions">
                 <button
                   type="button"
-                  className="da-add-papers-btn"
-                  title="Load more papers from OpenAlex"
-                  aria-label="Load more research papers"
-                  aria-expanded={addMenuOpen}
-                  aria-haspopup="dialog"
-                  disabled={addingPapers}
-                  onClick={() => setAddMenuOpen((o) => !o)}
+                  className="da-reload-papers-btn"
+                  title={
+                    pinnedVisibleCount >= papers.length
+                      ? "All papers are pinned"
+                      : "Replace unpinned papers with new highly cited papers"
+                  }
+                  aria-label="Reload unpinned papers"
+                  disabled={reloadingPapers || addingPapers || pinnedVisibleCount >= papers.length}
+                  onClick={reloadPapers}
                 >
-                  <span className="da-add-papers-icon" aria-hidden>
-                    +
-                  </span>
+                  {reloadingPapers ? "Reloading..." : "Reload"}
                 </button>
-                {addMenuOpen && (
-                  <div
-                    className="da-add-papers-popover"
-                    role="dialog"
-                    aria-label="Add more papers"
+                <div className="da-add-papers-wrap" ref={addMenuRef}>
+                  <button
+                    type="button"
+                    className="da-add-papers-btn"
+                    title="Load more papers from OpenAlex"
+                    aria-label="Load more research papers"
+                    aria-expanded={addMenuOpen}
+                    aria-haspopup="dialog"
+                    disabled={addingPapers || reloadingPapers}
+                    onClick={() => setAddMenuOpen((o) => !o)}
                   >
-                    <label className="da-add-papers-label" htmlFor="da-more-paper-count">
-                      How many new papers to fetch (next OpenAlex page, by citations)
-                    </label>
-                    <div className="da-add-papers-row">
-                      <input
-                        id="da-more-paper-count"
-                        type="number"
-                        min={1}
-                        max={50}
-                        className="da-add-papers-input"
-                        value={morePaperCount}
-                        onChange={(e) => setMorePaperCount(Number(e.target.value))}
-                      />
-                      <button
-                        type="button"
-                        className="da-add-papers-confirm"
-                        disabled={addingPapers}
-                        onClick={addMorePapers}
-                      >
-                        {addingPapers ? "Loading…" : "Add"}
-                      </button>
+                    <span className="da-add-papers-icon" aria-hidden>
+                      +
+                    </span>
+                  </button>
+                  {addMenuOpen && (
+                    <div
+                      className="da-add-papers-popover"
+                      role="dialog"
+                      aria-label="Add more papers"
+                    >
+                      <label className="da-add-papers-label" htmlFor="da-more-paper-count">
+                        How many new papers to fetch (next OpenAlex page, by citations)
+                      </label>
+                      <div className="da-add-papers-row">
+                        <input
+                          id="da-more-paper-count"
+                          type="number"
+                          min={1}
+                          max={50}
+                          className="da-add-papers-input"
+                          value={morePaperCount}
+                          onChange={(e) => setMorePaperCount(Number(e.target.value))}
+                        />
+                        <button
+                          type="button"
+                          className="da-add-papers-confirm"
+                          disabled={addingPapers || reloadingPapers}
+                          onClick={addMorePapers}
+                        >
+                          {addingPapers ? "Loading..." : "Add"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
           </div>

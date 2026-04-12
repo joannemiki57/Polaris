@@ -122,3 +122,14 @@ export async function deepAnswerMorePapers(
     body: JSON.stringify({ sessionId, count }),
   });
 }
+
+export async function deepAnswerReloadPapers(
+  sessionId: string,
+  pinnedOpenAlexUrls: string[],
+  count: number,
+): Promise<{ papers: DeepPaper[]; replacedCount: number; keptPinnedCount: number; nextPage: number }> {
+  return j("/api/deep-answer/reload-papers", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, pinnedOpenAlexUrls, count }),
+  });
+}

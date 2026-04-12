@@ -187,6 +187,7 @@ All routes are served from Express on port `8787`. The Vite dev server proxies `
 | `POST` | `/api/llm/deep` | 20/min | Generate a deep markdown answer for selected nodes |
 | `POST` | `/api/deep-answer/init` | 20/min | Initialize a paper-grounded chat session (fetches top papers) |
 | `POST` | `/api/deep-answer/chat` | 20/min | Send a message in a paper-grounded chat session |
+| `POST` | `/api/deep-answer/reload-papers` | 20/min | Keep pinned papers and refill unpinned slots with new high-citation papers |
 | `GET` | `/api/openalex/works` | 20/min | Raw OpenAlex search passthrough |
 
 ---

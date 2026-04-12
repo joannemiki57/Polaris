@@ -182,6 +182,10 @@ type DeepAnswerSession = {
 
 const paperSessions = new Map<string, DeepAnswerSession>();
 
+function toOpenAlexUrl(id: string): string {
+  return id.startsWith("http") ? id : `https://openalex.org/${id}`;
+}
+
 function mapPapersForClient(papers: OpenAlexWorkDetailed[]) {
   return papers.map((p) => ({
     title: p.title ?? "Untitled",
@@ -190,7 +194,7 @@ function mapPapersForClient(papers: OpenAlexWorkDetailed[]) {
     doi: p.doi,
     citedByCount: p.cited_by_count,
     abstract: p.abstract,
-    openAlexUrl: p.id.startsWith("http") ? p.id : `https://openalex.org/${p.id}`,
+    openAlexUrl: toOpenAlexUrl(p.id),
   }));
 }
 
@@ -256,6 +260,93 @@ app.post("/api/deep-answer/more-papers", strictLimiter, async (req, res) => {
     res.json({
       papers: mapPapersForClient(session.papers),
       addedCount: added,
+      nextPage: session.nextPage,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+app.post("/api/deep-answer/reload-papers", strictLimiter, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId ?? "").trim();
+    const pinnedOpenAlexUrls = Array.isArray(req.body?.pinnedOpenAlexUrls)
+      ? req.body.pinnedOpenAlexUrls.map((v: unknown) => String(v).trim()).filter(Boolean)
+      : [];
+    const rawCount = Number(req.body?.count);
+
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
+
+    const session = paperSessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session expired or not found. Please re-init." });
+      return;
+    }
+
+    const targetCount = Number.isFinite(rawCount) && rawCount > 0
+      ? Math.min(200, Math.floor(rawCount))
+      : session.papers.length;
+
+    const working = session.papers.slice(0, Math.max(0, targetCount));
+    const pinnedSet = new Set(pinnedOpenAlexUrls);
+    const isPinned = (p: OpenAlexWorkDetailed) => pinnedSet.has(toOpenAlexUrl(p.id));
+
+    const pinnedCount = working.filter(isPinned).length;
+    const replacementSlots = Math.max(0, working.length - pinnedCount);
+
+    const seen = new Set(session.papers.map((p) => p.id));
+    const replacements: OpenAlexWorkDetailed[] = [];
+    const perPage = Math.min(50, Math.max(10, replacementSlots));
+    let attempts = 0;
+    while (replacements.length < replacementSlots && attempts < 30) {
+      const fetched = await searchResearchPapers(
+        session.keyword,
+        OPENALEX_MAILTO,
+        perPage,
+        session.nextPage,
+      );
+      session.nextPage += 1;
+      attempts += 1;
+
+      if (fetched.length === 0) break;
+
+      for (const paper of fetched) {
+        if (!seen.has(paper.id)) {
+          seen.add(paper.id);
+          replacements.push(paper);
+          if (replacements.length >= replacementSlots) break;
+        }
+      }
+    }
+
+    const reloaded: OpenAlexWorkDetailed[] = [];
+    let replacementIndex = 0;
+    for (const paper of working) {
+      if (isPinned(paper)) {
+        reloaded.push(paper);
+        continue;
+      }
+
+      const nextPaper = replacements[replacementIndex];
+      if (nextPaper) {
+        reloaded.push(nextPaper);
+        replacementIndex += 1;
+      } else {
+        // Keep the original paper if OpenAlex cannot provide enough unseen papers.
+        reloaded.push(paper);
+      }
+    }
+
+    session.papers = reloaded;
+
+    res.json({
+      papers: mapPapersForClient(session.papers),
+      replacedCount: replacementIndex,
+      keptPinnedCount: pinnedCount,
       nextPage: session.nextPage,
     });
   } catch (e) {

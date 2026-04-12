@@ -20,6 +20,7 @@ This document describes every HTTP endpoint implemented by the Polaris server.
   - POST /api/llm/deep
   - POST /api/deep-answer/init
   - POST /api/deep-answer/more-papers
+  - POST /api/deep-answer/reload-papers
   - POST /api/deep-answer/chat
   - GET /api/openalex/works
 
@@ -284,6 +285,45 @@ Field rules:
   "papers": [],
   "addedCount": 8,
   "nextPage": 3
+}
+```
+
+- Error responses:
+  - 400: { "error": "sessionId required" }
+  - 404: { "error": "Session expired or not found. Please re-init." }
+  - 500: { "error": "..." }
+
+## POST /api/deep-answer/reload-papers
+
+Replaces unpinned papers with newly fetched high-citation papers while keeping pinned papers.
+
+- Rate limit: 20/min
+- Request body:
+
+```json
+{
+  "sessionId": "secure aggregation_1712930000000",
+  "pinnedOpenAlexUrls": [
+    "https://openalex.org/W1234567890"
+  ],
+  "count": 10
+}
+```
+
+Field rules:
+
+- sessionId is required
+- pinnedOpenAlexUrls is optional (array of OpenAlex URLs)
+- count is optional; defaults to current session paper count; max 200
+
+- Response 200:
+
+```json
+{
+  "papers": [],
+  "replacedCount": 7,
+  "keptPinnedCount": 3,
+  "nextPage": 5
 }
 ```
 
