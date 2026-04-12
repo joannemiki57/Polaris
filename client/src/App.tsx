@@ -283,49 +283,6 @@ export default function App() {
     setStatus("Markdown downloaded.");
   };
 
-  /* ── Pin paper from Deep Answer back into the graph ── */
-
-  const pinnedUrls = useMemo(() => {
-    if (!graph) return new Set<string>();
-    return new Set(
-      graph.nodes.filter((n) => n.kind === "paper" && n.url).map((n) => n.url!),
-    );
-  }, [graph]);
-
-  const handlePinPaper = useCallback(
-    (paper: import("./api").DeepPaper) => {
-      if (!graph || !deepPageNodeId) return;
-      const shortId = paper.openAlexUrl.split("/").pop() ?? "";
-      const paperId = `paper_${shortId.replace(/[^a-zA-Z0-9_]/g, "_")}`;
-      if (graph.nodes.some((n) => n.id === paperId)) return;
-
-      const newNode: GraphNode = {
-        id: paperId,
-        kind: "paper",
-        label: paper.title,
-        doi: paper.doi ?? undefined,
-        year: paper.year ?? undefined,
-        citedByCount: paper.citedByCount ?? undefined,
-        url: paper.openAlexUrl,
-        openAlexId: paper.openAlexUrl,
-        summary: paper.doi ? `DOI: ${paper.doi}` : undefined,
-      };
-      const newEdge = {
-        id: `pin_${deepPageNodeId}_${paperId}`,
-        source: deepPageNodeId,
-        target: paperId,
-        kind: "from_openalex" as const,
-      };
-      setGraph({
-        ...graph,
-        nodes: [...graph.nodes, newNode],
-        edges: [...graph.edges, newEdge],
-        updatedAt: new Date().toISOString(),
-      });
-    },
-    [graph, deepPageNodeId],
-  );
-
   const handleGoHome = () => {
     setGraph(null);
     setSelectedIds([]);
@@ -348,8 +305,6 @@ export default function App() {
         keywordNodeId={deepPageNodeId!}
         ancestors={deepPageAncestors}
         onBack={() => setDeepPageKeyword(null)}
-        onPinPaper={handlePinPaper}
-        pinnedUrls={pinnedUrls}
       />
     );
   }

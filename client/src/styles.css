@@ -926,31 +926,31 @@ a {
   background: #ffe08a !important;
 }
 
-/* ── Pin paper button ── */
+/* ── Paper star button (local favorite only) ── */
 
-.da-pin-btn {
+.da-star-btn {
   flex-shrink: 0;
   background: none;
-  border: 1px solid #27272a;
-  border-radius: 6px;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
-  padding: 4px 6px;
-  color: #94a3b8;
-  transition: all 0.15s ease;
+  padding: 2px 4px;
+  color: #64748b;
+  transition: color 0.15s ease, transform 0.12s ease;
   margin-top: 2px;
 }
-.da-pin-btn:hover:not(:disabled) {
+.da-star-btn:hover {
   color: #ffd369;
-  border-color: #ffd369;
-  background: rgba(255, 211, 105, 0.08);
+  transform: scale(1.06);
 }
-.da-pin-btn.da-pinned {
+.da-star-btn.da-starred {
   color: #ffd369;
-  border-color: #ffd369;
-  cursor: default;
-  background: rgba(255, 211, 105, 0.12);
+}
+.da-star-btn:focus-visible {
+  outline: 1px solid rgba(255, 211, 105, 0.5);
+  outline-offset: 1px;
 }
 
 /* ── Responsive ── */

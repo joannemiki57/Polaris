@@ -12,8 +12,6 @@ interface Props {
   keywordNodeId: string;
   ancestors: string[];
   onBack: () => void;
-  onPinPaper: (paper: DeepPaper) => void;
-  pinnedUrls: Set<string>;
 }
 
 function renderMarkdown(md: string): string {
@@ -34,10 +32,11 @@ function renderMarkdown(md: string): string {
     .replace(/\n/g, "<br/>");
 }
 
-export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancestors, onBack, onPinPaper, pinnedUrls }: Props) {
+export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancestors, onBack }: Props) {
   const searchKeyword = ancestors.length > 0
     ? [...ancestors].reverse().concat(keyword).join(" ")
     : keyword;
+  const starsStorageKey = `deep-stars:${searchKeyword.toLowerCase()}`;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [papers, setPapers] = useState<DeepPaper[]>([]);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -48,6 +47,7 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [morePaperCount, setMorePaperCount] = useState(10);
   const [addingPapers, setAddingPapers] = useState(false);
+  const [starredUrls, setStarredUrls] = useState<Set<string>>(new Set());
   const chatEndRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +65,20 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [addMenuOpen]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(starsStorageKey);
+      if (!raw) {
+        setStarredUrls(new Set());
+        return;
+      }
+      const parsed = JSON.parse(raw) as string[];
+      setStarredUrls(new Set(parsed));
+    } catch {
+      setStarredUrls(new Set());
+    }
+  }, [starsStorageKey]);
 
   const init = useCallback(async () => {
     setLoading(true);
@@ -130,6 +144,16 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     } finally {
       setAddingPapers(false);
     }
+  };
+
+  const toggleStar = (url: string) => {
+    setStarredUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      localStorage.setItem(starsStorageKey, JSON.stringify([...next]));
+      return next;
+    });
   };
 
   return (
@@ -212,7 +236,7 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
           {error && <p className="da-sidebar-err">{error}</p>}
           <ul className="da-paper-list">
             {papers.map((p, i) => {
-              const isPinned = pinnedUrls.has(p.openAlexUrl);
+              const isStarred = starredUrls.has(p.openAlexUrl);
               return (
                 <li key={p.openAlexUrl} className="da-paper-item">
                   <div className="da-paper-rank">#{i + 1}</div>
@@ -250,12 +274,12 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
                   </div>
                   <button
                     type="button"
-                    className={`da-pin-btn${isPinned ? " da-pinned" : ""}`}
-                    title={isPinned ? "Added to graph" : "Add to graph"}
-                    onClick={() => !isPinned && onPinPaper(p)}
-                    disabled={isPinned}
+                    className={`da-star-btn${isStarred ? " da-starred" : ""}`}
+                    title={isStarred ? "Unstar paper" : "Star paper"}
+                    aria-label={isStarred ? "Unstar paper" : "Star paper"}
+                    onClick={() => toggleStar(p.openAlexUrl)}
                   >
-                    {isPinned ? "★" : "☆"}
+                    {isStarred ? "★" : "☆"}
                   </button>
                 </li>
               );

@@ -172,6 +172,8 @@ interface GraphNode {
 
 ## API routes
 
+Detailed endpoint-by-endpoint reference: [docs/api-endpoints.md](docs/api-endpoints.md)
+
 All routes are served from Express on port `8787`. The Vite dev server proxies `/api/*` requests.
 
 | Method | Path | Rate limit | Description |
