@@ -149,6 +149,51 @@ a {
   color: #ffd369;
 }
 
+/* ── Layout toggle ── */
+
+.layout-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: #141414;
+  border-radius: 10px;
+  border: 1px solid #27272a;
+}
+
+.layout-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px;
+  color: #6b7280 !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.layout-btn:hover {
+  color: #d4d4d8 !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.layout-btn.layout-active {
+  background: #1c1c1e !important;
+  color: #ffd369 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.layout-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .canvas-wrap {
   display: flex;
   flex-direction: column;
@@ -158,7 +203,7 @@ a {
 
 .floating-cmdbar {
   position: absolute;
-  bottom: 80px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
@@ -169,6 +214,7 @@ a {
 .flow {
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .md {
@@ -207,6 +253,45 @@ a {
   25% { transform: translate(2px, -3px); }
   50% { transform: translate(-1px, 2px); }
   75% { transform: translate(3px, 1px); }
+}
+
+/* ── Star shimmer entrance ── */
+
+@keyframes mn-shimmer-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+    filter: drop-shadow(0 0 0 rgba(255, 211, 105, 0));
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 18px rgba(255, 211, 105, 0.8));
+  }
+  70% {
+    transform: scale(0.95);
+    filter: drop-shadow(0 0 10px rgba(255, 211, 105, 0.5));
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 6px rgba(255, 211, 105, 0.3));
+  }
+}
+
+@keyframes mn-shimmer-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(255, 211, 105, 0.2));
+    opacity: 0.85;
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(255, 211, 105, 0.6));
+    opacity: 1;
+  }
+}
+
+.mn-shimmer {
+  opacity: 0;
 }
 
 .mn-handle {

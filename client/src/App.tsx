@@ -26,7 +26,7 @@ import { DeepAnswerPage } from "./DeepAnswerPage";
 import { HomePage } from "./figma/HomePage";
 import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
-import { mindGraphToFlow } from "./layout";
+import { mindGraphToFlow, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
 import {
   clearSession,
@@ -77,6 +77,7 @@ export default function App() {
   const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
   const [deepPanelOpen, setDeepPanelOpen] = useState(false);
   const [paperQuery, setPaperQuery] = useState("");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("radial");
   /** After splash: main workspace (sidebar + canvas) even before a graph exists */
   const [boot, setBoot] = useState<"loading" | "splash" | "workspace">("loading");
 
@@ -110,10 +111,10 @@ export default function App() {
       setEdges([]);
       return;
     }
-    const { nodes: n, edges: e } = mindGraphToFlow(graph);
+    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode);
     setNodes(n);
     setEdges(e);
-  }, [graph, setEdges, setNodes]);
+  }, [graph, layoutMode, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -409,6 +410,27 @@ export default function App() {
             </p>
           </div>
 
+          {/* Layout toggle */}
+          <div className="panel-section">
+            <h3>Layout</h3>
+            <div className="layout-toggle">
+              <button
+                type="button"
+                className={`layout-btn${layoutMode === "tree" ? " layout-active" : ""}`}
+                onClick={() => setLayoutMode("tree")}
+              >
+                <span className="layout-icon">→</span> Tree
+              </button>
+              <button
+                type="button"
+                className={`layout-btn${layoutMode === "radial" ? " layout-active" : ""}`}
+                onClick={() => setLayoutMode("radial")}
+              >
+                <span className="layout-icon">◎</span> Graph
+              </button>
+            </div>
+          </div>
+
           {/* Session */}
           <div className="panel-section">
             <h3>Session</h3>
@@ -426,40 +448,39 @@ export default function App() {
         </aside>
 
         <section className="canvas-wrap">
-          {/* Floating command bar */}
-          <div className="floating-cmdbar">
-            <form className="fg-cmdbar" onSubmit={(e) => { e.preventDefault(); runExpand(); }}>
-              <div className="fg-cmdbar-inner">
-                <img className="fg-cmdbar-icon" src="/assets/search-icon.svg" alt="" />
-                <input
-                  className="fg-cmdbar-input"
-                  type="text"
-                  placeholder="Ask a research question..."
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                />
-                {question && (
-                  <button
-                    className="fg-cmdbar-clear"
-                    type="button"
-                    onClick={() => setQuestion("")}
-                  >
-                    &times;
-                  </button>
-                )}
-                <button
-                  className="fg-cmdbar-submit"
-                  type="submit"
-                  disabled={busy || !question.trim()}
-                >
-                  {graph ? "Regenerate" : "Generate graph"}
-                </button>
-              </div>
-            </form>
-          </div>
-
           {/* Graph canvas */}
           <div className="flow">
+            {/* Floating command bar */}
+            <div className="floating-cmdbar">
+              <form className="fg-cmdbar" onSubmit={(e) => { e.preventDefault(); runExpand(); }}>
+                <div className="fg-cmdbar-inner">
+                  <img className="fg-cmdbar-icon" src="/assets/search-icon.svg" alt="" />
+                  <input
+                    className="fg-cmdbar-input"
+                    type="text"
+                    placeholder="Ask a research question..."
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                  />
+                  {question && (
+                    <button
+                      className="fg-cmdbar-clear"
+                      type="button"
+                      onClick={() => setQuestion("")}
+                    >
+                      &times;
+                    </button>
+                  )}
+                  <button
+                    className="fg-cmdbar-submit"
+                    type="submit"
+                    disabled={busy || !question.trim()}
+                  >
+                    {graph ? "Regenerate" : "Generate graph"}
+                  </button>
+                </div>
+              </form>
+            </div>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -479,7 +500,7 @@ export default function App() {
           </div>
 
           {/* Deep panel */}
-          <div className="fg-deep-panel">
+          <div className={`fg-deep-panel${deepPanelOpen ? " fg-deep-panel-open" : ""}`}>
             <button
               className="fg-dp-toggle"
               type="button"
@@ -488,17 +509,15 @@ export default function App() {
               {deepPanelOpen ? "\u25BC" : "\u25B2"} Deep Panel &middot;{" "}
               {deepMd ? "Ready" : "Select a node"}
             </button>
-            {deepPanelOpen && (
-              <div className="fg-dp-content">
-                {deepMd ? (
-                  <pre className="md">{deepMd}</pre>
-                ) : (
-                  <p className="fg-dp-empty">
-                    Run &quot;Deep Answer&quot; after selecting a node to see a research summary.
-                  </p>
-                )}
-              </div>
-            )}
+            <div className="fg-dp-content">
+              {deepMd ? (
+                <pre className="md">{deepMd}</pre>
+              ) : (
+                <p className="fg-dp-empty">
+                  Run &quot;Deep Answer&quot; after selecting a node to see a research summary.
+                </p>
+              )}
+            </div>
           </div>
         </section>
       </div>

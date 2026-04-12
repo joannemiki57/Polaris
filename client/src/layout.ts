@@ -1,6 +1,8 @@
 import type { Edge, Node } from "reactflow";
 import type { GraphEdge, MindGraph } from "./graphTypes";
 
+export type LayoutMode = "tree" | "radial";
+
 function findRoots(g: MindGraph): string[] {
   const targets = new Set(g.edges.map((e) => e.target));
   const topics = g.nodes.filter((n) => n.kind === "topic").map((n) => n.id);
@@ -145,8 +147,56 @@ function forceDirectedLayout(g: MindGraph): Map<string, Vec> {
   return positions;
 }
 
-export function mindGraphToFlow(g: MindGraph): { nodes: Node[]; edges: Edge[] } {
-  const positions = forceDirectedLayout(g);
+function treeLayout(g: MindGraph): Map<string, Vec> {
+  const adj = new Map<string, string[]>();
+  for (const e of g.edges) {
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
+  }
+
+  const roots = findRoots(g);
+  const level = new Map<string, number>();
+  const q = [...roots];
+  for (const r of roots) level.set(r, 0);
+  while (q.length) {
+    const u = q.shift()!;
+    const L = level.get(u) ?? 0;
+    for (const v of adj.get(u) ?? []) {
+      if (!level.has(v)) {
+        level.set(v, L + 1);
+        q.push(v);
+      }
+    }
+  }
+  for (const n of g.nodes) {
+    if (!level.has(n.id)) level.set(n.id, 1);
+  }
+
+  const byLevel = new Map<number, string[]>();
+  for (const n of g.nodes) {
+    const lv = level.get(n.id) ?? 0;
+    if (!byLevel.has(lv)) byLevel.set(lv, []);
+    byLevel.get(lv)!.push(n.id);
+  }
+
+  const positions = new Map<string, Vec>();
+  const sortedLevels = [...byLevel.keys()].sort((a, b) => a - b);
+  const xGap = 320;
+  const yGap = 100;
+  for (const lv of sortedLevels) {
+    const row = byLevel.get(lv)!;
+    row.forEach((id, i) => {
+      positions.set(id, {
+        x: lv * xGap,
+        y: i * yGap - (row.length * yGap) / 2,
+      });
+    });
+  }
+  return positions;
+}
+
+export function mindGraphToFlow(g: MindGraph, layoutMode: LayoutMode = "radial"): { nodes: Node[]; edges: Edge[] } {
+  const positions = layoutMode === "tree" ? treeLayout(g) : forceDirectedLayout(g);
 
   const nodes: Node[] = g.nodes.map((n, idx) => {
     const pos = positions.get(n.id) ?? { x: 0, y: 0 };
