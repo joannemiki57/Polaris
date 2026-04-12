@@ -61,6 +61,27 @@ function getAncestorLabels(g: MindGraph, nodeId: string): string[] {
   return labels;
 }
 
+function getDescendantIds(g: MindGraph, seedIds: string[]): Set<string> {
+  const childrenBySource = new Map<string, string[]>();
+  for (const e of g.edges) {
+    if (!childrenBySource.has(e.source)) childrenBySource.set(e.source, []);
+    childrenBySource.get(e.source)!.push(e.target);
+  }
+
+  const descendants = new Set<string>();
+  const stack = [...seedIds];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (descendants.has(current)) continue;
+    descendants.add(current);
+    for (const childId of childrenBySource.get(current) ?? []) {
+      if (!descendants.has(childId)) stack.push(childId);
+    }
+  }
+
+  return descendants;
+}
+
 export default function App() {
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
@@ -150,6 +171,23 @@ export default function App() {
   const onPaneClick = useCallback(() => {
     setSelectedIds([]);
   }, []);
+
+  const onNodesDelete = useCallback((deletedNodes: Node[]) => {
+    if (!graph || deletedNodes.length === 0) return;
+
+    const deletedIds = deletedNodes.map((n) => n.id);
+    const subtreeIds = getDescendantIds(graph, deletedIds);
+
+    setGraph({
+      ...graph,
+      nodes: graph.nodes.filter((n) => !subtreeIds.has(n.id)),
+      edges: graph.edges.filter(
+        (e) => !subtreeIds.has(e.source) && !subtreeIds.has(e.target),
+      ),
+      updatedAt: new Date().toISOString(),
+    });
+    setSelectedIds((prev) => prev.filter((id) => !subtreeIds.has(id)));
+  }, [graph]);
 
   const runExpand = async (q?: string) => {
     const query = q ?? question;
@@ -485,6 +523,7 @@ export default function App() {
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
+              onNodesDelete={onNodesDelete}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}

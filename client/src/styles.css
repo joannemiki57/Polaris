@@ -507,11 +507,23 @@ a {
   background: #0e0e10;
 }
 
+.da-sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .da-sidebar-title {
   font-size: 14px;
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 0;
+  padding-top: 3px;
+  line-height: 1.3;
   color: #e2e8f0;
+  flex: 1;
+  min-width: 0;
 }
 
 .da-sidebar-hint {
@@ -605,6 +617,127 @@ a {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.da-add-papers-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Squircle “+” — same accent language as citations, reads as a compact control tile */
+.da-add-papers-btn {
+  width: 40px;
+  height: 40px;
+  /* Soft squircle: strong corner rounding on a square (not a pill) */
+  border-radius: 12px;
+  border: 1px solid #2a2a2e;
+  background: linear-gradient(165deg, #18181c 0%, #121214 100%);
+  color: #ffd369;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 400;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.35);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease;
+}
+.da-add-papers-btn:hover:not(:disabled) {
+  background: linear-gradient(165deg, #1f1f24 0%, #161618 100%);
+  border-color: rgba(255, 211, 105, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px rgba(255, 211, 105, 0.12),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+  color: #ffe08a;
+}
+.da-add-papers-btn:focus-visible {
+  outline: none;
+  border-color: #ffd369;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 2px rgba(255, 211, 105, 0.25);
+}
+.da-add-papers-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.da-add-papers-icon {
+  display: block;
+  margin-top: -1px;
+  font-weight: 300;
+}
+
+.da-add-papers-popover {
+  position: absolute;
+  right: 0;
+  left: auto;
+  top: calc(100% + 8px);
+  z-index: 20;
+  min-width: 248px;
+  max-width: min(280px, calc(100vw - 28px));
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #141416;
+  border: 1px solid #2e2e32;
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.25),
+    0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
+.da-add-papers-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+  margin-bottom: 8px;
+}
+
+.da-add-papers-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.da-add-papers-input {
+  width: 72px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+  background: #0a0a0a;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-family: inherit;
+}
+.da-add-papers-input:focus {
+  outline: none;
+  border-color: #ffd369;
+}
+
+.da-add-papers-confirm {
+  padding: 8px 16px !important;
+  border-radius: 8px !important;
+  background: #ffd369 !important;
+  border: 1px solid #e6b84d !important;
+  color: #222831 !important;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.da-add-papers-confirm:hover:not(:disabled) {
+  background: #ffe08a !important;
+}
+.da-add-papers-confirm:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .da-messages {

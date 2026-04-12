@@ -150,6 +150,7 @@ export async function searchResearchPapers(
   query: string,
   mailto: string | undefined,
   perPage = 10,
+  page = 1,
 ): Promise<OpenAlexWorkDetailed[]> {
   const q = query.trim();
   if (!q) return [];
@@ -157,6 +158,7 @@ export async function searchResearchPapers(
   const params = new URLSearchParams({
     search: query,
     per_page: String(perPage),
+    page: String(Math.max(1, page)),
     sort: "cited_by_count:desc",
     filter: "type:article,type:!review",
   });

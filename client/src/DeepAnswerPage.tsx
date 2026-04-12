@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deepAnswerChat,
   deepAnswerInit,
+  deepAnswerMorePapers,
   type ChatMsg,
   type DeepPaper,
 } from "./api";
@@ -44,11 +45,26 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [morePaperCount, setMorePaperCount] = useState(10);
+  const [addingPapers, setAddingPapers] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setAddMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [addMenuOpen]);
 
   const init = useCallback(async () => {
     setLoading(true);
@@ -100,6 +116,22 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
     }
   };
 
+  const addMorePapers = async () => {
+    if (!sessionId || addingPapers) return;
+    const n = Math.min(50, Math.max(1, Math.floor(morePaperCount) || 10));
+    setAddingPapers(true);
+    setError(null);
+    try {
+      const { papers: next } = await deepAnswerMorePapers(sessionId, n);
+      setPapers(next);
+      setAddMenuOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddingPapers(false);
+    }
+  };
+
   return (
     <div className="da-page">
       <nav className="da-nav">
@@ -125,14 +157,64 @@ export function DeepAnswerPage({ keyword, keywordNodeId: _keywordNodeId, ancesto
       <div className="da-body">
         {/* Papers sidebar */}
         <aside className="da-sidebar">
-          <h3 className="da-sidebar-title">Source Papers</h3>
+          <div className="da-sidebar-head">
+            <h3 className="da-sidebar-title">Source Papers</h3>
+            {sessionId && !loading && (
+              <div className="da-add-papers-wrap" ref={addMenuRef}>
+                <button
+                  type="button"
+                  className="da-add-papers-btn"
+                  title="Load more papers from OpenAlex"
+                  aria-label="Load more research papers"
+                  aria-expanded={addMenuOpen}
+                  aria-haspopup="dialog"
+                  disabled={addingPapers}
+                  onClick={() => setAddMenuOpen((o) => !o)}
+                >
+                  <span className="da-add-papers-icon" aria-hidden>
+                    +
+                  </span>
+                </button>
+                {addMenuOpen && (
+                  <div
+                    className="da-add-papers-popover"
+                    role="dialog"
+                    aria-label="Add more papers"
+                  >
+                    <label className="da-add-papers-label" htmlFor="da-more-paper-count">
+                      How many new papers to fetch (next OpenAlex page, by citations)
+                    </label>
+                    <div className="da-add-papers-row">
+                      <input
+                        id="da-more-paper-count"
+                        type="number"
+                        min={1}
+                        max={50}
+                        className="da-add-papers-input"
+                        value={morePaperCount}
+                        onChange={(e) => setMorePaperCount(Number(e.target.value))}
+                      />
+                      <button
+                        type="button"
+                        className="da-add-papers-confirm"
+                        disabled={addingPapers}
+                        onClick={addMorePapers}
+                      >
+                        {addingPapers ? "Loading…" : "Add"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           {loading && <p className="da-sidebar-hint">Searching papers...</p>}
           {error && <p className="da-sidebar-err">{error}</p>}
           <ul className="da-paper-list">
             {papers.map((p, i) => {
               const isPinned = pinnedUrls.has(p.openAlexUrl);
               return (
-                <li key={`${p.openAlexUrl}-${i}`} className="da-paper-item">
+                <li key={p.openAlexUrl} className="da-paper-item">
                   <div className="da-paper-rank">#{i + 1}</div>
                   <div className="da-paper-info">
                     <a

@@ -112,3 +112,13 @@ export async function deepAnswerChat(
     body: JSON.stringify({ sessionId, keyword, message, history }),
   });
 }
+
+export async function deepAnswerMorePapers(
+  sessionId: string,
+  count = 10,
+): Promise<{ papers: DeepPaper[]; addedCount: number; nextPage: number }> {
+  return j("/api/deep-answer/more-papers", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, count }),
+  });
+}

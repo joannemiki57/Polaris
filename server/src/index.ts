@@ -173,8 +173,26 @@ app.post("/api/llm/deep", strictLimiter, async (req, res) => {
   }
 });
 
-// In-memory store for paper sessions (per keyword)
-const paperSessions = new Map<string, OpenAlexWorkDetailed[]>();
+type DeepAnswerSession = {
+  keyword: string;
+  papers: OpenAlexWorkDetailed[];
+  /** Next 1-based OpenAlex `page` to fetch for this keyword. */
+  nextPage: number;
+};
+
+const paperSessions = new Map<string, DeepAnswerSession>();
+
+function mapPapersForClient(papers: OpenAlexWorkDetailed[]) {
+  return papers.map((p) => ({
+    title: p.title ?? "Untitled",
+    authors: p.authorNames,
+    year: p.publication_year,
+    doi: p.doi,
+    citedByCount: p.cited_by_count,
+    abstract: p.abstract,
+    openAlexUrl: p.id.startsWith("http") ? p.id : `https://openalex.org/${p.id}`,
+  }));
+}
 
 app.post("/api/deep-answer/init", strictLimiter, async (req, res) => {
   try {
@@ -183,21 +201,63 @@ app.post("/api/deep-answer/init", strictLimiter, async (req, res) => {
       res.status(400).json({ error: "keyword required" });
       return;
     }
-    const papers = await searchResearchPapers(keyword, OPENALEX_MAILTO, 10);
+    const papers = await searchResearchPapers(keyword, OPENALEX_MAILTO, 10, 1);
     const sessionId = `${keyword}_${Date.now()}`;
-    paperSessions.set(sessionId, papers);
+    paperSessions.set(sessionId, {
+      keyword,
+      papers: [...papers],
+      nextPage: 2,
+    });
 
-    const paperList = papers.map((p) => ({
-      title: p.title ?? "Untitled",
-      authors: p.authorNames,
-      year: p.publication_year,
-      doi: p.doi,
-      citedByCount: p.cited_by_count,
-      abstract: p.abstract,
-      openAlexUrl: p.id.startsWith("http") ? p.id : `https://openalex.org/${p.id}`,
-    }));
+    res.json({
+      sessionId,
+      keyword,
+      papers: mapPapersForClient(papers),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
 
-    res.json({ sessionId, keyword, papers: paperList });
+app.post("/api/deep-answer/more-papers", strictLimiter, async (req, res) => {
+  try {
+    const sessionId = String(req.body?.sessionId ?? "").trim();
+    const raw = Number(req.body?.count);
+    const count = Number.isFinite(raw) && raw > 0 ? Math.min(50, Math.floor(raw)) : 10;
+
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId required" });
+      return;
+    }
+    const session = paperSessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Session expired or not found. Please re-init." });
+      return;
+    }
+
+    const fetched = await searchResearchPapers(
+      session.keyword,
+      OPENALEX_MAILTO,
+      count,
+      session.nextPage,
+    );
+    const seen = new Set(session.papers.map((p) => p.id));
+    let added = 0;
+    for (const p of fetched) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        session.papers.push(p);
+        added += 1;
+      }
+    }
+    session.nextPage += 1;
+
+    res.json({
+      papers: mapPapersForClient(session.papers),
+      addedCount: added,
+      nextPage: session.nextPage,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: (e as Error).message });
@@ -215,15 +275,15 @@ app.post("/api/deep-answer/chat", strictLimiter, async (req, res) => {
       res.status(400).json({ error: "sessionId, keyword, and message required" });
       return;
     }
-    const papers = paperSessions.get(sessionId);
-    if (!papers) {
+    const session = paperSessions.get(sessionId);
+    if (!session) {
       res.status(404).json({ error: "Session expired or not found. Please re-init." });
       return;
     }
     const reply = await chatWithPapers(
       GEMINI_KEY,
       keyword,
-      papers,
+      session.papers,
       history,
       message,
       GEMINI_MODEL,
