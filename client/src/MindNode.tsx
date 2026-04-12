@@ -35,20 +35,12 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
   const isPaper = kind === "paper";
   const isSubtask = kind === "subtask";
 
-  const floatDelay = ((data.animDelay ?? 0) % 12) * 0.7;
-  const floatDuration = 4 + ((data.animDelay ?? 0) % 5) * 0.8;
-  const shimmerDelay = (data.animDelay ?? 0) * 0.15;
-
   return (
     <div
       className={`mn mn-shimmer ${selected ? "mn-selected" : ""} ${paperUrl ? "mn-clickable" : ""} mn-${kind}`}
       onDoubleClick={handleClick}
       style={{
-        animation: [
-          `mn-shimmer-enter 0.7s cubic-bezier(0.22,1,0.36,1) ${shimmerDelay}s forwards`,
-          `mn-shimmer-pulse 3s ease-in-out ${shimmerDelay + 0.7}s 3`,
-          `mn-float ${floatDuration}s ease-in-out ${floatDelay}s infinite`,
-        ].join(", "),
+        animation: "mn-fade-up 0.28s cubic-bezier(0.22,1,0.36,1) forwards",
       }}
     >
       <Handle type="target" position={Position.Top} className="mn-handle" id="t-top" />

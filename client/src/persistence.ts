@@ -40,6 +40,7 @@ export type SessionRecord = {
   graphTitle: string;
   nodeCount: number;
   edgeCount: number;
+  graph: MindGraph | null;
 };
 
 export type WorkspaceItem = {
@@ -138,11 +139,24 @@ export function loadSessionHistory(): SessionRecord[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as SessionRecord[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as Array<Partial<SessionRecord>>;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((r) => ({
+      id: String(r.id ?? `${Date.now()}`),
+      at: String(r.at ?? new Date().toISOString()),
+      question: String(r.question ?? "(empty question)"),
+      graphTitle: String(r.graphTitle ?? "Untitled graph"),
+      nodeCount: Number(r.nodeCount ?? 0),
+      edgeCount: Number(r.edgeCount ?? 0),
+      graph: (r.graph as MindGraph | null) ?? null,
+    }));
   } catch {
     return [];
   }
+}
+
+function saveSessionHistory(records: SessionRecord[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(records));
 }
 
 export function archiveSession(session: Session) {
@@ -157,6 +171,7 @@ export function archiveSession(session: Session) {
     graphTitle: graph?.title || "Untitled graph",
     nodeCount: graph?.nodes.length ?? 0,
     edgeCount: graph?.edges.length ?? 0,
+    graph: graph ?? null,
   };
 
   const prev = loadSessionHistory();
@@ -171,7 +186,26 @@ export function archiveSession(session: Session) {
     return;
   }
   const merged = [nextRecord, ...prev].slice(0, 30);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(merged));
+  saveSessionHistory(merged);
+}
+
+export function promoteSessionRecord(id: string): SessionRecord[] {
+  const records = loadSessionHistory();
+  const idx = records.findIndex((r) => r.id === id);
+  if (idx <= 0) return records;
+  const picked = records[idx]!;
+  const next = [picked, ...records.slice(0, idx), ...records.slice(idx + 1)];
+  saveSessionHistory(next);
+  return next;
+}
+
+export function deleteSessionRecord(id: string): SessionRecord[] {
+  const records = loadSessionHistory();
+  const next = records.filter((r) => r.id !== id);
+  if (next.length !== records.length) {
+    saveSessionHistory(next);
+  }
+  return next;
 }
 
 export function exportMarkdown(question: string, graph: MindGraph): string {

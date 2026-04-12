@@ -2,14 +2,18 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { toPng } from "html-to-image";
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
-  type Node,
+  getRectOfNodes,
+  getTransformForBounds,
+  type Node as FlowNode,
   useEdgesState,
   useNodesState,
 } from "reactflow";
@@ -33,11 +37,13 @@ import {
   archiveSession,
   clearSession,
   createDefaultWorkspace,
+  deleteSessionRecord,
   downloadMarkdown,
   exportMarkdown,
   loadSessionHistory,
   loadSession,
   loadWorkspaceStore,
+  promoteSessionRecord,
   saveSession,
   saveWorkspaceStore,
   type SessionRecord,
@@ -90,11 +96,43 @@ function getDescendantIds(g: MindGraph, seedIds: string[]): Set<string> {
   return descendants;
 }
 
+function deriveWorkspaceNameFromQuestion(question: string, fallback: string): string {
+  const normalized = question.trim().replace(/\s+/g, " ");
+  if (!normalized) return fallback;
+
+  const firstSentence = normalized.split(/[.?!\n]+/)[0]?.trim() || normalized;
+  const keywordTokens = firstSentence.match(/[\p{L}\p{N}][\p{L}\p{N}\-']*/gu) ?? [];
+
+  let baseName: string;
+  if (keywordTokens.length > 0) {
+    baseName = keywordTokens.slice(0, 5).join(" ");
+  } else {
+    // For inputs that are not tokenized as words, fall back to a short sentence slice.
+    baseName = firstSentence.slice(0, 28).trim();
+  }
+
+  if (!baseName) return fallback;
+  return baseName.length > 30 ? `${baseName.slice(0, 30).trimEnd()}...` : baseName;
+}
+
+function isGenericWorkspaceName(name: string): boolean {
+  const normalized = name.trim();
+  return /^workspace\s+\d+$/i.test(normalized) || /^recovered session$/i.test(normalized);
+}
+
+function getWorkspaceDisplayName(name: string, question: string): string {
+  if (!question.trim()) return name;
+  if (!isGenericWorkspaceName(name)) return name;
+  return deriveWorkspaceNameFromQuestion(question, name);
+}
+
 export default function App() {
+  const [pngExportMode, setPngExportMode] = useState<"full" | "visible">("full");
+  const [showPngExportSettings, setShowPngExportSettings] = useState(false);
+  const [recentDeleteMode, setRecentDeleteMode] = useState(false);
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [deepMd, setDeepMd] = useState("");
   const [status, setStatus] = useState("");
   const [apiHealth, setApiHealth] = useState<{
     llm: boolean;
@@ -104,7 +142,6 @@ export default function App() {
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
   const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
   const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
-  const [deepPanelOpen, setDeepPanelOpen] = useState(false);
   const [paperQuery, setPaperQuery] = useState("");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("radial");
   const [sessionHistory, setSessionHistory] = useState<SessionRecord[]>([]);
@@ -115,6 +152,24 @@ export default function App() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const flowRef = useRef<HTMLDivElement | null>(null);
+  const pngExportSettingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showPngExportSettings) return;
+
+    const onPointerDown = (evt: PointerEvent) => {
+      const target = evt.target as globalThis.Node | null;
+      if (!target || !pngExportSettingsRef.current?.contains(target)) {
+        setShowPngExportSettings(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [showPngExportSettings]);
 
   useEffect(() => {
     health()
@@ -138,8 +193,12 @@ export default function App() {
         graph: legacy.graph,
       };
     }
-    const active = migratedItems.find((w) => w.id === store.activeId) ?? migratedItems[0]!;
-    setWorkspaces(migratedItems);
+    const syncedItems = migratedItems.map((ws) => ({
+      ...ws,
+      name: getWorkspaceDisplayName(ws.name, ws.question),
+    }));
+    const active = syncedItems.find((w) => w.id === store.activeId) ?? syncedItems[0]!;
+    setWorkspaces(syncedItems);
     setActiveWorkspaceId(active.id);
     setQuestion(active.question);
     setGraph(active.graph);
@@ -148,31 +207,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeWorkspaceId) return;
-    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-    if (!ws) return;
-    setQuestion(ws.question);
-    setGraph(ws.graph);
-    setSelectedIds([]);
-    setDeepMd("");
-    setDeepPageKeyword(null);
-  }, [activeWorkspaceId, workspaces]);
-
-  useEffect(() => {
     saveSession({ question, graph });
   }, [question, graph]);
 
   useEffect(() => {
     if (!activeWorkspaceId || workspaces.length === 0) return;
-    setWorkspaces((prev) => prev.map((ws) => {
-      if (ws.id !== activeWorkspaceId) return ws;
-      if (ws.question === question && ws.graph === graph) return ws;
-      return {
-        ...ws,
-        question,
-        graph,
-      };
-    }));
+    setWorkspaces((prev) => {
+      let changed = false;
+      const next = prev.map((ws) => {
+        if (ws.id !== activeWorkspaceId) return ws;
+        const nextName = getWorkspaceDisplayName(ws.name, question);
+        if (ws.question === question && ws.graph === graph && ws.name === nextName) return ws;
+        changed = true;
+        return {
+          ...ws,
+          name: nextName,
+          question,
+          graph,
+        };
+      });
+      return changed ? next : prev;
+    });
   }, [question, graph, activeWorkspaceId]);
 
   useEffect(() => {
@@ -214,7 +269,7 @@ export default function App() {
     );
   }, [selectedNodes]);
 
-  const onNodeClick = useCallback((evt: ReactMouseEvent, node: Node) => {
+  const onNodeClick = useCallback((evt: ReactMouseEvent, node: FlowNode) => {
     setSelectedIds((prev) => {
       if (evt.shiftKey) {
         return prev.includes(node.id)
@@ -229,7 +284,7 @@ export default function App() {
     setSelectedIds([]);
   }, []);
 
-  const onNodesDelete = useCallback((deletedNodes: Node[]) => {
+  const onNodesDelete = useCallback((deletedNodes: FlowNode[]) => {
     if (!graph || deletedNodes.length === 0) return;
 
     const deletedIds = deletedNodes.map((n) => n.id);
@@ -256,9 +311,13 @@ export default function App() {
       const { graph: g } = await expandGraph(query);
       archiveSession({ question: query, graph: g });
       setSessionHistory(loadSessionHistory());
+      setWorkspaces((prev) => prev.map((ws) => (
+        ws.id === activeWorkspaceId
+          ? { ...ws, name: getWorkspaceDisplayName(ws.name, query) }
+          : ws
+      )));
       setGraph(g);
       setSelectedIds([]);
-      setDeepMd("");
       setStatus("Graph ready.");
     } catch (e) {
       setStatus((e as Error).message);
@@ -367,12 +426,85 @@ export default function App() {
     setStatus("Markdown downloaded.");
   };
 
+  const exportPng = async () => {
+    if (!graph) return;
+
+    const flowRoot = flowRef.current?.querySelector(".react-flow") as HTMLElement | null;
+    const viewportEl = flowRef.current?.querySelector(".react-flow__viewport") as HTMLElement | null;
+    if (!flowRoot || !viewportEl) {
+      setStatus("Unable to find diagram area for PNG export.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Rendering PNG...");
+    try {
+      const isFullGraph = pngExportMode === "full";
+      const baseWidth = Math.max(1, Math.round(flowRoot.clientWidth));
+      const baseHeight = Math.max(1, Math.round(flowRoot.clientHeight));
+
+      let target = flowRoot;
+      let width = baseWidth;
+      let height = baseHeight;
+      let style: Partial<CSSStyleDeclaration> | undefined;
+      let filter: ((node: HTMLElement) => boolean) | undefined;
+
+      if (isFullGraph && nodes.length > 0) {
+        const nodesBounds = getRectOfNodes(nodes);
+        const paddedWidth = Math.ceil(nodesBounds.width + 180);
+        const paddedHeight = Math.ceil(nodesBounds.height + 180);
+
+        width = Math.max(baseWidth, Math.min(7000, paddedWidth));
+        height = Math.max(baseHeight, Math.min(7000, paddedHeight));
+
+        const [x, y, zoom] = getTransformForBounds(nodesBounds, width, height, 0.9, 2);
+
+        target = viewportEl;
+        style = {
+          width: `${width}px`,
+          height: `${height}px`,
+          transform: `translate(${x}px, ${y}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+        };
+        filter = () => true;
+      } else {
+        filter = (node) => {
+          const cls = node.classList;
+          if (!cls) return true;
+          return !cls.contains("react-flow__controls")
+            && !cls.contains("react-flow__minimap")
+            && !cls.contains("react-flow__attribution");
+        };
+      }
+
+      const dataUrl = await toPng(target, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#09090b",
+        width,
+        height,
+        style,
+        filter,
+      });
+
+      const stem = (graph.title || question || "mindgraph").replace(/[^\w\-]+/g, "_");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${stem}.png`;
+      a.click();
+      setStatus(isFullGraph ? "PNG downloaded (full graph)." : "PNG downloaded (visible area).");
+    } catch (e) {
+      setStatus(`PNG export failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleGoHome = () => {
     archiveSession({ question, graph });
     setSessionHistory(loadSessionHistory());
     setGraph(null);
     setSelectedIds([]);
-    setDeepMd("");
     setQuestion("");
     setStatus("");
     clearSession();
@@ -382,14 +514,35 @@ export default function App() {
   const createWorkspace = () => {
     const nextIndex = workspaces.length + 1;
     const next = createDefaultWorkspace(`Workspace ${nextIndex}`);
-    setWorkspaces((prev) => [...prev, next]);
+    setWorkspaces((prev) => {
+      const withCurrent = prev.map((ws) => (
+        ws.id === activeWorkspaceId ? { ...ws, question, graph } : ws
+      ));
+      return [...withCurrent, next];
+    });
     setActiveWorkspaceId(next.id);
     setQuestion("");
     setGraph(null);
     setSelectedIds([]);
-    setDeepMd("");
+    setDeepPageKeyword(null);
     setStatus(`Created ${next.name}.`);
     setBoot("workspace");
+  };
+
+  const switchWorkspace = (id: string) => {
+    if (id === activeWorkspaceId) return;
+    const withCurrent = workspaces.map((ws) => (
+      ws.id === activeWorkspaceId ? { ...ws, question, graph } : ws
+    ));
+    const target = withCurrent.find((ws) => ws.id === id);
+    if (!target) return;
+    setWorkspaces(withCurrent);
+    setActiveWorkspaceId(id);
+    setQuestion(target.question);
+    setGraph(target.graph);
+    setSelectedIds([]);
+    setDeepPageKeyword(null);
+    setStatus(`Switched to ${target.name}.`);
   };
 
   const renameWorkspace = (id: string) => {
@@ -414,12 +567,100 @@ export default function App() {
       setQuestion(fallback.question);
       setGraph(fallback.graph);
       setSelectedIds([]);
-      setDeepMd("");
     }
+  };
+
+  const openRecentSessionAsWorkspace = (record: SessionRecord) => {
+    const findExistingWorkspace = (list: WorkspaceItem[]): WorkspaceItem | undefined => {
+      const expectedTitle = record.graph?.title || record.graphTitle || "Untitled graph";
+      return list.find((ws) => {
+        const wsTitle = ws.graph?.title || "Untitled graph";
+        const wsNodeCount = ws.graph?.nodes.length ?? 0;
+        const wsEdgeCount = ws.graph?.edges.length ?? 0;
+        return ws.question === record.question
+          && wsTitle === expectedTitle
+          && wsNodeCount === record.nodeCount
+          && wsEdgeCount === record.edgeCount;
+      });
+    };
+
+    const withCurrent = workspaces.map((ws) => (
+      ws.id === activeWorkspaceId ? { ...ws, question, graph } : ws
+    ));
+    const existing = findExistingWorkspace(withCurrent);
+    if (existing) {
+      const updated = withCurrent.map((ws) => {
+        if (ws.id !== existing.id) return ws;
+        const nextQuestion = record.question;
+        const nextGraph = record.graph ?? ws.graph;
+        return {
+          ...ws,
+          name: getWorkspaceDisplayName(ws.name, nextQuestion),
+          question: nextQuestion,
+          graph: nextGraph,
+        };
+      });
+      const target = updated.find((ws) => ws.id === existing.id)!;
+      setWorkspaces(updated);
+      setActiveWorkspaceId(target.id);
+      setQuestion(target.question);
+      setGraph(target.graph);
+      setSelectedIds([]);
+      setDeepPageKeyword(null);
+      setSessionHistory(promoteSessionRecord(record.id));
+      if (!target.graph && target.question.trim()) {
+        setStatus(`Switched to ${target.name}. Regenerating graph from question...`);
+        setTimeout(() => {
+          void runExpand(target.question);
+        }, 0);
+      } else {
+        setStatus(`Switched to existing workspace: ${target.name}.`);
+      }
+      setBoot("workspace");
+      return;
+    }
+
+    const baseName = deriveWorkspaceNameFromQuestion(record.question, "Recovered session");
+    const next = createDefaultWorkspace(baseName);
+    const fromRecent: WorkspaceItem = {
+      ...next,
+      question: record.question,
+      graph: record.graph,
+    };
+    setWorkspaces((prev) => {
+      const withCurrentInPrev = prev.map((ws) => (
+        ws.id === activeWorkspaceId ? { ...ws, question, graph } : ws
+      ));
+      return [...withCurrentInPrev, fromRecent];
+    });
+    setActiveWorkspaceId(fromRecent.id);
+    setQuestion(fromRecent.question);
+    setGraph(fromRecent.graph);
+    setSelectedIds([]);
+    setDeepPageKeyword(null);
+    setSessionHistory(promoteSessionRecord(record.id));
+    if (!record.graph && record.question.trim()) {
+      setStatus(`Opened ${fromRecent.name}. Regenerating graph from question...`);
+      setTimeout(() => {
+        void runExpand(record.question);
+      }, 0);
+    } else {
+      setStatus(`Opened recent session as ${fromRecent.name}.`);
+    }
+    setBoot("workspace");
   };
 
   const finishSplash = useCallback(() => {
     setBoot("workspace");
+  }, []);
+
+  const removeRecentSession = useCallback((id: string) => {
+    const next = deleteSessionRecord(id);
+    setSessionHistory(next);
+    if (next.length === 0) {
+      setRecentDeleteMode(false);
+    }
+    setStatus("Recent session deleted.");
   }, []);
 
   // Deep Answer page (full-screen)
@@ -459,15 +700,16 @@ export default function App() {
         <div className="workspace-tabs" aria-label="Workspace tabs">
           {workspaces.map((ws) => {
             const active = ws.id === activeWorkspaceId;
+            const displayName = getWorkspaceDisplayName(ws.name, ws.question);
             return (
               <div key={ws.id} className={`workspace-tab${active ? " workspace-tab-active" : ""}`}>
                 <button
                   type="button"
                   className="workspace-tab-main"
-                  onClick={() => setActiveWorkspaceId(ws.id)}
-                  title={ws.name}
+                  onClick={() => switchWorkspace(ws.id)}
+                  title={displayName}
                 >
-                  {ws.name}
+                  {displayName}
                 </button>
                 <button
                   type="button"
@@ -598,10 +840,52 @@ export default function App() {
 
           {/* Session */}
           <div className="panel-section">
-            <h3>Session</h3>
+            <div className="panel-head">
+              <h3>Session</h3>
+              <div className="session-settings" ref={pngExportSettingsRef}>
+                <button
+                  type="button"
+                  className="session-settings-btn"
+                  onClick={() => setShowPngExportSettings((prev) => !prev)}
+                  aria-haspopup="menu"
+                  aria-expanded={showPngExportSettings}
+                  title="PNG export settings"
+                >
+                  ⚙
+                </button>
+                {showPngExportSettings && (
+                  <div className="session-settings-popover" role="menu" aria-label="PNG export settings">
+                    <p className="session-settings-title">PNG export scope</p>
+                    <label className="session-settings-option">
+                      <input
+                        type="radio"
+                        name="png-export-mode"
+                        value="full"
+                        checked={pngExportMode === "full"}
+                        onChange={() => setPngExportMode("full")}
+                      />
+                      Full graph (all nodes)
+                    </label>
+                    <label className="session-settings-option">
+                      <input
+                        type="radio"
+                        name="png-export-mode"
+                        value="visible"
+                        checked={pngExportMode === "visible"}
+                        onChange={() => setPngExportMode("visible")}
+                      />
+                      Visible area only
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="row stack">
               <button type="button" disabled={!graph} onClick={exportMd}>
                 Export Markdown
+              </button>
+              <button type="button" disabled={!graph || busy} onClick={exportPng}>
+                {pngExportMode === "full" ? "Export PNG (Full graph)" : "Export PNG (Visible area)"}
               </button>
               <button type="button" onClick={createWorkspace}>
                 New workspace
@@ -609,13 +893,47 @@ export default function App() {
             </div>
             {sessionHistory.length > 0 && (
               <div className="session-history">
-                <p className="hint small">Recent sessions</p>
+                <div className="session-history-head">
+                  <p className="hint small">Recent sessions</p>
+                  <button
+                    type="button"
+                    className={`session-trash-btn${recentDeleteMode ? " session-trash-btn-active" : ""}`}
+                    onClick={() => setRecentDeleteMode((prev) => !prev)}
+                    title={recentDeleteMode ? "Exit delete mode" : "Delete recent sessions"}
+                    aria-label={recentDeleteMode ? "Exit delete mode" : "Delete recent sessions"}
+                  >
+                    🗑️
+                  </button>
+                </div>
                 <ul className="session-list">
                   {sessionHistory.slice(0, 5).map((s) => (
-                    <li key={s.id} className="session-item">
-                      <div className="session-title">{s.question}</div>
-                      <div className="session-meta">
-                        {new Date(s.at).toLocaleString()} · {s.nodeCount} nodes · {s.edgeCount} edges
+                    <li
+                      key={s.id}
+                      className={`session-item${recentDeleteMode ? " session-item-delete-mode" : ""}`}
+                    >
+                      <div className="session-item-row">
+                      <button
+                        type="button"
+                        className="session-open-btn"
+                        onClick={() => openRecentSessionAsWorkspace(s)}
+                        title="Open this recent session as a new workspace tab"
+                      >
+                        <div className="session-title">{s.question}</div>
+                        <div className="session-meta">
+                          {new Date(s.at).toLocaleString()} · {s.nodeCount} nodes · {s.edgeCount} edges
+                        </div>
+                      </button>
+                        {recentDeleteMode && (
+                          <button
+                            type="button"
+                            className="session-delete-btn"
+                            onClick={() => removeRecentSession(s.id)}
+                            title="Delete this recent session"
+                            aria-label="Delete this recent session"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -629,7 +947,7 @@ export default function App() {
 
         <section className="canvas-wrap">
           {/* Graph canvas */}
-          <div className="flow">
+          <div className="flow" ref={flowRef}>
             {/* Floating command bar */}
             <div className="floating-cmdbar">
               <form className="fg-cmdbar" onSubmit={(e) => { e.preventDefault(); runExpand(); }}>
@@ -681,25 +999,7 @@ export default function App() {
           </div>
 
           {/* Deep panel */}
-          <div className={`fg-deep-panel${deepPanelOpen ? " fg-deep-panel-open" : ""}`}>
-            <button
-              className="fg-dp-toggle"
-              type="button"
-              onClick={() => setDeepPanelOpen(!deepPanelOpen)}
-            >
-              {deepPanelOpen ? "\u25BC" : "\u25B2"} Deep Panel &middot;{" "}
-              {deepMd ? "Ready" : "Select a node"}
-            </button>
-            <div className="fg-dp-content">
-              {deepMd ? (
-                <pre className="md">{deepMd}</pre>
-              ) : (
-                <p className="fg-dp-empty">
-                  Run &quot;Deep Answer&quot; after selecting a node to see a research summary.
-                </p>
-              )}
-            </div>
-          </div>
+          {/* Deep panel removed: Deep workflow now runs through full-screen Deep Answer page. */}
         </section>
       </div>
     </div>

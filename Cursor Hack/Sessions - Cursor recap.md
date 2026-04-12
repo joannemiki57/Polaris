@@ -44,3 +44,4 @@ Outcome: a structured implementation plan (phases: scope, data model, LLM JSON, 
 ## Update Changelog
 
 - 2026-04-12: Added sessions CHANGELOG template and two-feature row policy | Added session changelog hook and pre-commit enforcement
+- 2026-04-12: Converted changelog to Keep a Changelog format | Updated changelog hook to write Unreleased bullets
