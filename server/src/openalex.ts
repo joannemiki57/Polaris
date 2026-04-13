@@ -63,10 +63,17 @@ function loadDiskCache(): Map<string, CacheEntry> {
   return m;
 }
 
+let _savePending = false;
+
 function saveDiskCache(map: Map<string, CacheEntry>) {
-  const obj: Record<string, CacheEntry> = {};
-  for (const [k, v] of map) obj[k] = v;
-  fs.writeFileSync(cachePath(), JSON.stringify(obj), "utf8");
+  if (_savePending) return;
+  _savePending = true;
+  queueMicrotask(() => {
+    _savePending = false;
+    const obj: Record<string, CacheEntry> = {};
+    for (const [k, v] of map) obj[k] = v;
+    fs.promises.writeFile(cachePath(), JSON.stringify(obj), "utf8").catch(() => {});
+  });
 }
 
 function getCache(): Map<string, CacheEntry> {

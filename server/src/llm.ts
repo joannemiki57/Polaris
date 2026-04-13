@@ -84,9 +84,17 @@ function parseMindGraph(raw: string): MindGraph {
   };
 }
 
+const _geminiCache = new Map<string, ReturnType<GoogleGenerativeAI["getGenerativeModel"]>>();
+
 function getGemini(apiKey: string, model: string) {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({ model });
+  const key = `${apiKey}:${model}`;
+  let cached = _geminiCache.get(key);
+  if (!cached) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    cached = genAI.getGenerativeModel({ model });
+    _geminiCache.set(key, cached);
+  }
+  return cached;
 }
 
 /** Shape we pass to `generateContent` everywhere in this module (structured chat + optional JSON mode). */
@@ -135,9 +143,9 @@ function getErrorStatus(err: unknown): number | undefined {
 
 function isCapacityOrTransientError(err: unknown): boolean {
   const status = getErrorStatus(err);
-  if (status === 503 || status === 429 || status === 502) return true;
+  if (status === 503 || status === 429 || status === 502 || status === 404) return true;
   const message = err instanceof Error ? err.message : String(err ?? "");
-  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|503|429|502|overloaded|timeout)/i.test(
+  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|no longer available|not found|503|429|502|404|overloaded|timeout)/i.test(
     message,
   );
 }

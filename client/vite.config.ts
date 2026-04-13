@@ -9,4 +9,15 @@ export default defineConfig({
       "/api": { target: "http://localhost:8787", changeOrigin: true },
     },
   },
+  build: {
+    target: "es2020",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-reactflow": ["reactflow"],
+          "vendor-html-to-image": ["html-to-image"],
+        },
+      },
+    },
+  },
 });

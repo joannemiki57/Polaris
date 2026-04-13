@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -6,7 +8,6 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { toPng } from "html-to-image";
 import ReactFlow, {
   Background,
   Controls,
@@ -16,7 +17,6 @@ import ReactFlow, {
   type Node as FlowNode,
   useEdgesState,
   useNodesState,
-  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -28,14 +28,14 @@ import {
   expandSelection,
   health,
 } from "./api";
-import { DeepAnswerPage } from "./DeepAnswerPage";
-import { HomePage } from "./figma/HomePage";
+
+const DeepAnswerPage = lazy(() => import("./DeepAnswerPage").then((m) => ({ default: m.DeepAnswerPage })));
+const HomePage = lazy(() => import("./figma/HomePage").then((m) => ({ default: m.HomePage })));
+
 import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
-import { mindGraphToFlow, type EdgeLineMode, type LayoutMode } from "./layout";
+import { mindGraphToFlow, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
-import { ConstellationLoader } from "./ConstellationLoader";
-import { ParallelStraightEdge } from "./ParallelStraightEdge";
 import {
   archiveSession,
   clearSession,
@@ -54,9 +54,6 @@ import {
 } from "./persistence";
 
 const nodeTypes = { mind: MindNode };
-const edgeTypes = { parallelStraight: ParallelStraightEdge };
-const CMD_BAR_ANCHOR_KEY = "mindgraph_cmdbar_anchor_v1";
-const EDGE_LINE_MODE_KEY = "mindgraph_edge_line_mode_v1";
 
 function graphNodeById(g: MindGraph, id: string): GraphNode | undefined {
   return g.nodes.find((n) => n.id === id);
@@ -135,21 +132,17 @@ function getWorkspaceDisplayName(name: string, question: string): string {
 export default function App() {
   const [pngExportMode, setPngExportMode] = useState<"full" | "visible">("full");
   const [showPngExportSettings, setShowPngExportSettings] = useState(false);
-  const [cmdbarAnchor, setCmdbarAnchor] = useState<"bottom" | "top">("bottom");
-  const [edgeLineMode, setEdgeLineMode] = useState<EdgeLineMode>("diagonal");
-  const [showCmdbarSettings, setShowCmdbarSettings] = useState(false);
   const [recentDeleteMode, setRecentDeleteMode] = useState(false);
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [statusByWorkspace, setStatusByWorkspace] = useState<Record<string, string>>({});
-  const [busyByWorkspace, setBusyByWorkspace] = useState<Record<string, boolean>>({});
-  const [showLoaderByWorkspace, setShowLoaderByWorkspace] = useState<Record<string, boolean>>({});
+  const [status, setStatus] = useState("");
   const [apiHealth, setApiHealth] = useState<{
     llm: boolean;
     openai?: boolean;
     openAlexMailto: boolean;
   } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
   const [deepPageNodeId, setDeepPageNodeId] = useState<string | null>(null);
   const [deepPageAncestors, setDeepPageAncestors] = useState<string[]>([]);
@@ -163,133 +156,8 @@ export default function App() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { fitView: rfFitView } = useReactFlow();
   const flowRef = useRef<HTMLDivElement | null>(null);
   const pngExportSettingsRef = useRef<HTMLDivElement | null>(null);
-  const cmdbarSettingsRef = useRef<HTMLDivElement | null>(null);
-  const activeWorkspaceIdRef = useRef(activeWorkspaceId);
-  const selectedIdsRef = useRef<string[]>(selectedIds);
-
-  const busy = activeWorkspaceId ? Boolean(busyByWorkspace[activeWorkspaceId]) : false;
-  const showLoader = activeWorkspaceId ? Boolean(showLoaderByWorkspace[activeWorkspaceId]) : false;
-  const status = activeWorkspaceId ? (statusByWorkspace[activeWorkspaceId] ?? "") : "";
-
-  useEffect(() => {
-    activeWorkspaceIdRef.current = activeWorkspaceId;
-  }, [activeWorkspaceId]);
-
-  useEffect(() => {
-    selectedIdsRef.current = selectedIds;
-  }, [selectedIds]);
-
-  const setWorkspaceBusy = useCallback((workspaceId: string, value: boolean) => {
-    setBusyByWorkspace((prev) => {
-      const current = Boolean(prev[workspaceId]);
-      if (current === value) return prev;
-      if (value) return { ...prev, [workspaceId]: true };
-      const next = { ...prev };
-      delete next[workspaceId];
-      return next;
-    });
-  }, []);
-
-  const setWorkspaceLoader = useCallback((workspaceId: string, value: boolean) => {
-    setShowLoaderByWorkspace((prev) => {
-      const current = Boolean(prev[workspaceId]);
-      if (current === value) return prev;
-      if (value) return { ...prev, [workspaceId]: true };
-      const next = { ...prev };
-      delete next[workspaceId];
-      return next;
-    });
-  }, []);
-
-  const setWorkspaceStatus = useCallback((workspaceId: string, value: string) => {
-    setStatusByWorkspace((prev) => {
-      const current = prev[workspaceId] ?? "";
-      if (current === value) return prev;
-      if (value) return { ...prev, [workspaceId]: value };
-      const next = { ...prev };
-      delete next[workspaceId];
-      return next;
-    });
-  }, []);
-
-  const syncNodeSelectionState = useCallback((nextSelectedIds: string[]) => {
-    const selectedSet = new Set(nextSelectedIds);
-    setNodes((prev) => {
-      let changed = false;
-      const next = prev.map((node) => {
-        const isMultiSelected = selectedSet.has(node.id);
-        const prevIsMultiSelected = Boolean(node.data?.isMultiSelected);
-        const prevSelected = Boolean(node.selected);
-
-        if (prevIsMultiSelected === isMultiSelected && prevSelected === isMultiSelected) {
-          return node;
-        }
-
-        changed = true;
-        return {
-          ...node,
-          selected: isMultiSelected,
-          data: {
-            ...node.data,
-            isMultiSelected,
-          },
-        };
-      });
-
-      return changed ? next : prev;
-    });
-  }, [setNodes]);
-
-  const applySelection = useCallback((nextSelectedIds: string[]) => {
-    selectedIdsRef.current = nextSelectedIds;
-    setSelectedIds(nextSelectedIds);
-    syncNodeSelectionState(nextSelectedIds);
-  }, [syncNodeSelectionState]);
-
-  // Keep loader mounted during fade-out after busy ends, then center graph
-  useEffect(() => {
-    if (!activeWorkspaceId) return;
-    if (busy) {
-      setWorkspaceLoader(activeWorkspaceId, true);
-    } else if (showLoader) {
-      const workspaceId = activeWorkspaceId;
-      const t = setTimeout(() => {
-        setWorkspaceLoader(workspaceId, false);
-        if (activeWorkspaceIdRef.current === workspaceId) {
-          // Re-center the graph after the loader fades out
-          requestAnimationFrame(() => rfFitView({ duration: 400, padding: 0.12 }));
-        }
-      }, 700);
-      return () => clearTimeout(t);
-    }
-  }, [activeWorkspaceId, busy, showLoader, setWorkspaceLoader, rfFitView]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CMD_BAR_ANCHOR_KEY);
-      if (stored === "top" || stored === "bottom") {
-        setCmdbarAnchor(stored);
-      }
-      const storedLine = localStorage.getItem(EDGE_LINE_MODE_KEY);
-      if (storedLine === "diagonal" || storedLine === "parallel") {
-        setEdgeLineMode(storedLine);
-      }
-    } catch {
-      // Keep default bottom on storage failures.
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CMD_BAR_ANCHOR_KEY, cmdbarAnchor);
-      localStorage.setItem(EDGE_LINE_MODE_KEY, edgeLineMode);
-    } catch {
-      // Ignore localStorage quota/privacy mode errors.
-    }
-  }, [cmdbarAnchor, edgeLineMode]);
 
   useEffect(() => {
     if (!showPngExportSettings) return;
@@ -306,22 +174,6 @@ export default function App() {
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [showPngExportSettings]);
-
-  useEffect(() => {
-    if (!showCmdbarSettings) return;
-
-    const onPointerDown = (evt: PointerEvent) => {
-      const target = evt.target as globalThis.Node | null;
-      if (!target || !cmdbarSettingsRef.current?.contains(target)) {
-        setShowCmdbarSettings(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [showCmdbarSettings]);
 
   useEffect(() => {
     health()
@@ -396,78 +248,16 @@ export default function App() {
     });
   }, [activeWorkspaceId, workspaces]);
 
-  const layoutAnimRef = useRef<number>(0);
-
   useEffect(() => {
     if (!graph) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const { nodes: rawTargetNodes, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
-    const selectedSet = new Set(selectedIdsRef.current);
-    const targetNodes = rawTargetNodes.map((node) => ({
-      ...node,
-      selected: selectedSet.has(node.id),
-      data: {
-        ...node.data,
-        isMultiSelected: selectedSet.has(node.id),
-      },
-    }));
+    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode);
+    setNodes(n);
     setEdges(e);
-
-    // Capture current positions for lerp animation
-    setNodes((prev) => {
-      const oldPos = new Map(prev.map((n) => [n.id, { ...n.position }]));
-      const hasOld = targetNodes.some((n) => oldPos.has(n.id));
-
-      if (!hasOld) {
-        // First render or full replacement — no animation
-        return targetNodes;
-      }
-
-      // Cancel any running animation
-      cancelAnimationFrame(layoutAnimRef.current);
-
-      // Start nodes at their old positions (or new position if they're new)
-      const startNodes = targetNodes.map((n) => ({
-        ...n,
-        position: oldPos.get(n.id) ?? n.position,
-      }));
-
-      const duration = 500;
-      const t0 = performance.now();
-
-      const animate = () => {
-        const elapsed = performance.now() - t0;
-        const progress = Math.min(elapsed / duration, 1);
-        // Ease-out cubic
-        const ease = 1 - Math.pow(1 - progress, 3);
-
-        setNodes(
-          targetNodes.map((target) => {
-            const start = oldPos.get(target.id) ?? target.position;
-            return {
-              ...target,
-              position: {
-                x: start.x + (target.position.x - start.x) * ease,
-                y: start.y + (target.position.y - start.y) * ease,
-              },
-            };
-          }),
-        );
-
-        if (progress < 1) {
-          layoutAnimRef.current = requestAnimationFrame(animate);
-        }
-      };
-
-      layoutAnimRef.current = requestAnimationFrame(animate);
-      return startNodes;
-    });
-
-    return () => cancelAnimationFrame(layoutAnimRef.current);
-  }, [graph, layoutMode, edgeLineMode, setEdges, setNodes]);
+  }, [graph, layoutMode, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -488,22 +278,21 @@ export default function App() {
       selectedNodes.every((n) => n.kind === "paper" && n.openAlexId)
     );
   }, [selectedNodes]);
-  const isMultiSelection = selectedNodes.length >= 2;
-  const combinedMayBeBroad = selectedNodes.length >= 4;
 
   const onNodeClick = useCallback((evt: ReactMouseEvent, node: FlowNode) => {
-    const prev = selectedIdsRef.current;
-    const next = evt.shiftKey
-      ? (prev.includes(node.id)
+    setSelectedIds((prev) => {
+      if (evt.shiftKey) {
+        return prev.includes(node.id)
           ? prev.filter((x) => x !== node.id)
-          : [...prev, node.id])
-      : [node.id];
-    applySelection(next);
-  }, [applySelection]);
+          : [...prev, node.id];
+      }
+      return [node.id];
+    });
+  }, []);
 
   const onPaneClick = useCallback(() => {
-    applySelection([]);
-  }, [applySelection]);
+    setSelectedIds([]);
+  }, []);
 
   const onNodesDelete = useCallback((deletedNodes: FlowNode[]) => {
     if (!graph || deletedNodes.length === 0) return;
@@ -519,43 +308,31 @@ export default function App() {
       ),
       updatedAt: new Date().toISOString(),
     });
-    applySelection(selectedIdsRef.current.filter((id) => !subtreeIds.has(id)));
-  }, [graph, applySelection]);
+    setSelectedIds((prev) => prev.filter((id) => !subtreeIds.has(id)));
+  }, [graph]);
 
   const runExpand = async (q?: string) => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
     const query = q ?? question;
     if (!query.trim()) return;
-    if (q && activeWorkspaceIdRef.current === workspaceId) setQuestion(q);
-    setWorkspaceBusy(workspaceId, true);
-    setWorkspaceStatus(workspaceId, "Expanding question…");
+    if (q) setQuestion(q);
+    setBusy(true);
+    setStatus("Expanding question…");
     try {
       const { graph: g } = await expandGraph(query);
       archiveSession({ question: query, graph: g });
       setSessionHistory(loadSessionHistory());
-      setWorkspaces((prev) => prev.map((ws) => {
-        if (ws.id !== workspaceId) return ws;
-        return {
-          ...ws,
-          name: getWorkspaceDisplayName(ws.name, query),
-          question: query,
-          graph: g,
-        };
-      }));
-      if (activeWorkspaceIdRef.current === workspaceId) {
-        setQuestion(query);
-        setGraph(g);
-        applySelection([]);
-      }
-      setWorkspaceStatus(workspaceId, "Graph ready.");
+      setWorkspaces((prev) => prev.map((ws) => (
+        ws.id === activeWorkspaceId
+          ? { ...ws, name: getWorkspaceDisplayName(ws.name, query) }
+          : ws
+      )));
+      setGraph(g);
+      setSelectedIds([]);
+      setStatus("Graph ready.");
     } catch (e) {
-      setWorkspaceStatus(workspaceId, (e as Error).message);
+      setStatus((e as Error).message);
     } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
+      setBusy(false);
     }
   };
 
@@ -564,11 +341,9 @@ export default function App() {
     keywordNodeId: string;
     starredOpenAlexUrls: string[];
   }) => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) throw new Error("Workspace not selected.");
     if (!graph) throw new Error("Graph not loaded.");
-    setWorkspaceBusy(workspaceId, true);
-    setWorkspaceStatus(workspaceId, "Extracting keywords from starred papers...");
+    setBusy(true);
+    setStatus("Extracting keywords from starred papers...");
     try {
       const { graph: g, keywordCount, usedPapers } = await extractKeywordsFromStarredPapers(
         graph,
@@ -576,59 +351,39 @@ export default function App() {
         payload.sessionId,
         payload.starredOpenAlexUrls,
       );
-      setWorkspaces((prev) => prev.map((ws) => (
-        ws.id === workspaceId ? { ...ws, graph: g } : ws
-      )));
-      if (activeWorkspaceIdRef.current === workspaceId) {
-        setGraph(g);
-      }
-      setWorkspaceStatus(workspaceId, `Added ${keywordCount} keywords from ${usedPapers} starred papers.`);
+      setGraph(g);
+      setStatus(`Added ${keywordCount} keywords from ${usedPapers} starred papers.`);
     } catch (e) {
-      setWorkspaceStatus(workspaceId, (e as Error).message);
+      setStatus((e as Error).message);
       throw e;
     } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
+      setBusy(false);
     }
   };
 
-  const runExpandSelectionCombined = async () => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
+  const runExpandSelection = async () => {
     if (!graph || !selectedNodes.length) return;
-    setWorkspaceBusy(workspaceId, true);
+    setBusy(true);
 
-    if (selectedNodes.length === 1 && allSelectedArePapers) {
-      setWorkspaceStatus(workspaceId, "Fetching keywords from OpenAlex…");
+    if (allSelectedArePapers) {
+      setStatus("Fetching keywords from OpenAlex…");
       try {
-        const result = await expandPaperKeywords(graph, selectedNodes[0]!.id);
-        const g = result.graph;
-        setWorkspaces((prev) => prev.map((ws) => (
-          ws.id === workspaceId ? { ...ws, graph: g } : ws
-        )));
-        if (activeWorkspaceIdRef.current === workspaceId) {
-          setGraph(g);
+        let g = graph;
+        for (const n of selectedNodes) {
+          const result = await expandPaperKeywords(g, n.id);
+          g = result.graph;
         }
-        setWorkspaceStatus(workspaceId, "Keywords expanded from OpenAlex.");
+        setGraph(g);
+        setStatus("Keywords expanded from OpenAlex.");
       } catch (e) {
-        setWorkspaceStatus(workspaceId, (e as Error).message);
+        setStatus((e as Error).message);
       } finally {
-        setWorkspaceBusy(workspaceId, false);
-        if (activeWorkspaceIdRef.current !== workspaceId) {
-          setWorkspaceLoader(workspaceId, false);
-        }
+        setBusy(false);
       }
       return;
     }
 
-    setWorkspaceStatus(
-      workspaceId,
-      selectedNodes.length >= 2
-        ? "Expanding selected nodes (combined context)…"
-        : "Expanding selection…",
-    );
+    setStatus("Expanding selection…");
     try {
       const sel = selectedNodes.map((n) => ({
         id: n.id,
@@ -636,89 +391,28 @@ export default function App() {
         kind: n.kind,
       }));
       const { graph: g } = await expandSelection(question, graph, sel);
-      setWorkspaces((prev) => prev.map((ws) => (
-        ws.id === workspaceId ? { ...ws, graph: g } : ws
-      )));
-      if (activeWorkspaceIdRef.current === workspaceId) {
-        setGraph(g);
-      }
-      setWorkspaceStatus(
-        workspaceId,
-        selectedNodes.length >= 2
-          ? "Merged combined expansion from selected nodes."
-          : "Merged new nodes.",
-      );
+      setGraph(g);
+      setStatus("Merged new nodes.");
     } catch (e) {
-      setWorkspaceStatus(workspaceId, (e as Error).message);
+      setStatus((e as Error).message);
     } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
-    }
-  };
-
-  const runExpandSelectionIndividual = async () => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
-    if (!graph || selectedNodes.length < 2) return;
-    setWorkspaceBusy(workspaceId, true);
-    setWorkspaceStatus(workspaceId, `Expanding ${selectedNodes.length} selected nodes individually…`);
-    try {
-      let currentGraph = graph;
-      for (const node of selectedNodes) {
-        if (node.kind === "paper" && node.openAlexId) {
-          const result = await expandPaperKeywords(currentGraph, node.id);
-          currentGraph = result.graph;
-        } else {
-          const { graph: nextGraph } = await expandSelection(question, currentGraph, [{
-            id: node.id,
-            label: node.label,
-            kind: node.kind,
-          }]);
-          currentGraph = nextGraph;
-        }
-      }
-      setWorkspaces((prev) => prev.map((ws) => (
-        ws.id === workspaceId ? { ...ws, graph: currentGraph } : ws
-      )));
-      if (activeWorkspaceIdRef.current === workspaceId) {
-        setGraph(currentGraph);
-      }
-      setWorkspaceStatus(workspaceId, `Merged individual expansions for ${selectedNodes.length} nodes.`);
-    } catch (e) {
-      setWorkspaceStatus(workspaceId, (e as Error).message);
-    } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
+      setBusy(false);
     }
   };
 
   const runPapers = async () => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
     if (!graph || selectedIds.length !== 1) return;
     const kid = selectedIds[0]!;
-    setWorkspaceBusy(workspaceId, true);
-    setWorkspaceStatus(workspaceId, "Fetching OpenAlex…");
+    setBusy(true);
+    setStatus("Fetching OpenAlex…");
     try {
       const { graph: g } = await attachPapers(graph, kid, (paperQuery || graphNodeById(graph, kid)?.label) ?? "");
-      setWorkspaces((prev) => prev.map((ws) => (
-        ws.id === workspaceId ? { ...ws, graph: g } : ws
-      )));
-      if (activeWorkspaceIdRef.current === workspaceId) {
-        setGraph(g);
-      }
-      setWorkspaceStatus(workspaceId, "Papers attached. Data: OpenAlex.");
+      setGraph(g);
+      setStatus("Papers attached. Data: OpenAlex.");
     } catch (e) {
-      setWorkspaceStatus(workspaceId, (e as Error).message);
+      setStatus((e as Error).message);
     } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
+      setBusy(false);
     }
   };
 
@@ -733,31 +427,27 @@ export default function App() {
   };
 
   const exportMd = () => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
     if (!graph) return;
     const md = exportMarkdown(question, graph);
     downloadMarkdown(
       `${(graph.title || "mindgraph").replace(/[^\w\-]+/g, "_")}.md`,
       md,
     );
-    setWorkspaceStatus(workspaceId, "Markdown downloaded.");
+    setStatus("Markdown downloaded.");
   };
 
   const exportPng = async () => {
-    const workspaceId = activeWorkspaceId;
-    if (!workspaceId) return;
     if (!graph) return;
 
     const flowRoot = flowRef.current?.querySelector(".react-flow") as HTMLElement | null;
     const viewportEl = flowRef.current?.querySelector(".react-flow__viewport") as HTMLElement | null;
     if (!flowRoot || !viewportEl) {
-      setWorkspaceStatus(workspaceId, "Unable to find diagram area for PNG export.");
+      setStatus("Unable to find diagram area for PNG export.");
       return;
     }
 
-    setWorkspaceBusy(workspaceId, true);
-    setWorkspaceStatus(workspaceId, "Rendering PNG...");
+    setBusy(true);
+    setStatus("Rendering PNG...");
     try {
       const isFullGraph = pngExportMode === "full";
       const baseWidth = Math.max(1, Math.round(flowRoot.clientWidth));
@@ -797,6 +487,7 @@ export default function App() {
         };
       }
 
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(target, {
         cacheBust: true,
         pixelRatio: 2,
@@ -812,14 +503,11 @@ export default function App() {
       a.href = dataUrl;
       a.download = `${stem}.png`;
       a.click();
-      setWorkspaceStatus(workspaceId, isFullGraph ? "PNG downloaded (full graph)." : "PNG downloaded (visible area).");
+      setStatus(isFullGraph ? "PNG downloaded (full graph)." : "PNG downloaded (visible area).");
     } catch (e) {
-      setWorkspaceStatus(workspaceId, `PNG export failed: ${(e as Error).message}`);
+      setStatus(`PNG export failed: ${(e as Error).message}`);
     } finally {
-      setWorkspaceBusy(workspaceId, false);
-      if (activeWorkspaceIdRef.current !== workspaceId) {
-        setWorkspaceLoader(workspaceId, false);
-      }
+      setBusy(false);
     }
   };
 
@@ -827,13 +515,9 @@ export default function App() {
     archiveSession({ question, graph });
     setSessionHistory(loadSessionHistory());
     setGraph(null);
-    applySelection([]);
+    setSelectedIds([]);
     setQuestion("");
-    if (activeWorkspaceId) {
-      setWorkspaceStatus(activeWorkspaceId, "");
-      setWorkspaceBusy(activeWorkspaceId, false);
-      setWorkspaceLoader(activeWorkspaceId, false);
-    }
+    setStatus("");
     clearSession();
     setBoot("workspace");
   };
@@ -850,9 +534,9 @@ export default function App() {
     setActiveWorkspaceId(next.id);
     setQuestion("");
     setGraph(null);
-    applySelection([]);
+    setSelectedIds([]);
     setDeepPageKeyword(null);
-    setWorkspaceStatus(next.id, `Created ${next.name}.`);
+    setStatus(`Created ${next.name}.`);
     setBoot("workspace");
   };
 
@@ -867,9 +551,9 @@ export default function App() {
     setActiveWorkspaceId(id);
     setQuestion(target.question);
     setGraph(target.graph);
-    applySelection([]);
+    setSelectedIds([]);
     setDeepPageKeyword(null);
-    setWorkspaceStatus(id, `Switched to ${target.name}.`);
+    setStatus(`Switched to ${target.name}.`);
   };
 
   const renameWorkspace = (id: string) => {
@@ -888,15 +572,12 @@ export default function App() {
 
     const remaining = workspaces.filter((w) => w.id !== id);
     setWorkspaces(remaining);
-    setWorkspaceStatus(id, "");
-    setWorkspaceBusy(id, false);
-    setWorkspaceLoader(id, false);
     if (activeWorkspaceId === id) {
       const fallback = remaining[0]!;
       setActiveWorkspaceId(fallback.id);
       setQuestion(fallback.question);
       setGraph(fallback.graph);
-      applySelection([]);
+      setSelectedIds([]);
     }
   };
 
@@ -935,16 +616,16 @@ export default function App() {
       setActiveWorkspaceId(target.id);
       setQuestion(target.question);
       setGraph(target.graph);
-      applySelection([]);
+      setSelectedIds([]);
       setDeepPageKeyword(null);
       setSessionHistory(promoteSessionRecord(record.id));
       if (!target.graph && target.question.trim()) {
-        setWorkspaceStatus(target.id, `Switched to ${target.name}. Regenerating graph from question...`);
+        setStatus(`Switched to ${target.name}. Regenerating graph from question...`);
         setTimeout(() => {
           void runExpand(target.question);
         }, 0);
       } else {
-        setWorkspaceStatus(target.id, `Switched to existing workspace: ${target.name}.`);
+        setStatus(`Switched to existing workspace: ${target.name}.`);
       }
       setBoot("workspace");
       return;
@@ -966,16 +647,16 @@ export default function App() {
     setActiveWorkspaceId(fromRecent.id);
     setQuestion(fromRecent.question);
     setGraph(fromRecent.graph);
-    applySelection([]);
+    setSelectedIds([]);
     setDeepPageKeyword(null);
     setSessionHistory(promoteSessionRecord(record.id));
     if (!record.graph && record.question.trim()) {
-      setWorkspaceStatus(fromRecent.id, `Opened ${fromRecent.name}. Regenerating graph from question...`);
+      setStatus(`Opened ${fromRecent.name}. Regenerating graph from question...`);
       setTimeout(() => {
         void runExpand(record.question);
       }, 0);
     } else {
-      setWorkspaceStatus(fromRecent.id, `Opened recent session as ${fromRecent.name}.`);
+      setStatus(`Opened recent session as ${fromRecent.name}.`);
     }
     setBoot("workspace");
   };
@@ -990,22 +671,22 @@ export default function App() {
     if (next.length === 0) {
       setRecentDeleteMode(false);
     }
-    if (activeWorkspaceIdRef.current) {
-      setWorkspaceStatus(activeWorkspaceIdRef.current, "Recent session deleted.");
-    }
-  }, [setWorkspaceStatus]);
+    setStatus("Recent session deleted.");
+  }, []);
 
   // Deep Answer page (full-screen)
   if (deepPageKeyword) {
     return (
-      <DeepAnswerPage
-        workspaceId={activeWorkspaceId}
-        keyword={deepPageKeyword}
-        keywordNodeId={deepPageNodeId!}
-        ancestors={deepPageAncestors}
-        onBack={() => setDeepPageKeyword(null)}
-        onUseStarredKeywords={useStarredPapersForKeywords}
-      />
+      <Suspense fallback={<div className="fg-boot-screen" aria-busy="true"><div className="fg-boot-pulse" /></div>}>
+        <DeepAnswerPage
+          workspaceId={activeWorkspaceId}
+          keyword={deepPageKeyword}
+          keywordNodeId={deepPageNodeId!}
+          ancestors={deepPageAncestors}
+          onBack={() => setDeepPageKeyword(null)}
+          onUseStarredKeywords={useStarredPapersForKeywords}
+        />
+      </Suspense>
     );
   }
 
@@ -1018,7 +699,11 @@ export default function App() {
   }
 
   if (boot === "splash") {
-    return <HomePage onContinue={finishSplash} />;
+    return (
+      <Suspense fallback={<div className="fg-boot-screen" aria-busy="true"><div className="fg-boot-pulse" /></div>}>
+        <HomePage onContinue={finishSplash} />
+      </Suspense>
+    );
   }
 
   // Main workspace (graph may still be null — ask from command bar)
@@ -1076,65 +761,6 @@ export default function App() {
           </button>
         </div>
         <div className="navbar-right">
-          <div className="navbar-settings" ref={cmdbarSettingsRef}>
-            <button
-              type="button"
-              className="navbar-settings-btn"
-              onClick={() => setShowCmdbarSettings((prev) => !prev)}
-              aria-haspopup="menu"
-              aria-expanded={showCmdbarSettings}
-              title="Personal settings"
-            >
-              ⚙
-            </button>
-            {showCmdbarSettings && (
-              <div className="navbar-settings-popover" role="menu" aria-label="Personal settings">
-                <p className="navbar-settings-title">Search bar position</p>
-                <label className="navbar-settings-option">
-                  <input
-                    type="radio"
-                    name="cmdbar-anchor"
-                    value="bottom"
-                    checked={cmdbarAnchor === "bottom"}
-                    onChange={() => setCmdbarAnchor("bottom")}
-                  />
-                  Fixed at bottom (default)
-                </label>
-                <label className="navbar-settings-option">
-                  <input
-                    type="radio"
-                    name="cmdbar-anchor"
-                    value="top"
-                    checked={cmdbarAnchor === "top"}
-                    onChange={() => setCmdbarAnchor("top")}
-                  />
-                  Fixed at top
-                </label>
-                <hr className="navbar-settings-divider" />
-                <p className="navbar-settings-title">Connection lines</p>
-                <label className="navbar-settings-option">
-                  <input
-                    type="radio"
-                    name="edge-line-mode"
-                    value="diagonal"
-                    checked={edgeLineMode === "diagonal"}
-                    onChange={() => setEdgeLineMode("diagonal")}
-                  />
-                  Diagonal straight
-                </label>
-                <label className="navbar-settings-option">
-                  <input
-                    type="radio"
-                    name="edge-line-mode"
-                    value="parallel"
-                    checked={edgeLineMode === "parallel"}
-                    onChange={() => setEdgeLineMode("parallel")}
-                  />
-                  Parallel straight
-                </label>
-              </div>
-            )}
-          </div>
           {apiHealth && (
             <span className="navbar-health">
               LLM: {apiHealth.llm ? "on" : "mock"}
@@ -1149,18 +775,7 @@ export default function App() {
         <aside className="sidebar">
           {/* Selection */}
           <div className="panel-section" style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
-            <div className="panel-head">
-              <h3>Selection</h3>
-              <button
-                type="button"
-                className="selection-clear-btn"
-                disabled={selectedIds.length === 0}
-                onClick={() => applySelection([])}
-                title="Deselect all selected nodes"
-              >
-                Deselect all
-              </button>
-            </div>
+            <h3>Selection</h3>
             {!graph && (
               <p className="hint">
                 Enter a research question in the bar below, then generate your first graph.
@@ -1177,39 +792,13 @@ export default function App() {
               ))}
             </ul>
             <div className="row stack">
-              {isMultiSelection ? (
-                <div className="selection-action-row">
-                  <button
-                    type="button"
-                    disabled={busy || !graph || selectedNodes.length === 0}
-                    onClick={runExpandSelectionCombined}
-                    title={combinedMayBeBroad ? "Combined relevance may be lower with many selected nodes" : "Expand all selected nodes together"}
-                  >
-                    Expand Selected
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !graph || selectedNodes.length < 2}
-                    onClick={runExpandSelectionIndividual}
-                    title="Expand each selected node independently"
-                  >
-                    Expand Individual
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy || !graph || selectedNodes.length === 0}
-                  onClick={runExpandSelectionCombined}
-                >
-                  {allSelectedArePapers ? "Expand keywords (OpenAlex)" : "Expand selected (LLM)"}
-                </button>
-              )}
-              {combinedMayBeBroad && (
-                <p className="hint small">
-                  Combined relevance may be lower with 4+ selected nodes.
-                </p>
-              )}
+              <button
+                type="button"
+                disabled={busy || !graph || selectedNodes.length === 0}
+                onClick={runExpandSelection}
+              >
+                {allSelectedArePapers ? "Expand keywords (OpenAlex)" : "Expand selected (LLM)"}
+              </button>
               <button
                 type="button"
                 className="da-btn-primary"
@@ -1374,7 +963,7 @@ export default function App() {
           {status && <p className="status">{status}</p>}
         </aside>
 
-        <section className={`canvas-wrap${cmdbarAnchor === "top" ? " canvas-wrap-cmdbar-top" : ""}`}>
+        <section className="canvas-wrap">
           {/* Graph canvas */}
           <div className="flow" ref={flowRef}>
             {/* Floating command bar */}
@@ -1408,25 +997,29 @@ export default function App() {
                 </div>
               </form>
             </div>
-            {showLoader && <ConstellationLoader status={status} visible={busy} />}
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onNodesDelete={onNodesDelete}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              fitView
-              minZoom={0.2}
-              maxZoom={1.5}
-            >
-              <MiniMap pannable zoomable />
-              <Controls />
-              <Background gap={24} color="rgba(75, 85, 99, 0.15)" />
-            </ReactFlow>
+            {graph ? (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onNodesDelete={onNodesDelete}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.2}
+                maxZoom={1.5}
+              >
+                <MiniMap pannable zoomable />
+                <Controls />
+                <Background gap={24} color="rgba(75, 85, 99, 0.15)" />
+              </ReactFlow>
+            ) : (
+              <div className="empty-canvas" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.3)", fontSize: 15 }}>
+                Enter a research question above to generate your graph.
+              </div>
+            )}
           </div>
 
           {/* Deep panel */}
