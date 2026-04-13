@@ -678,35 +678,50 @@ a {
   align-items: center;
   gap: 6px;
   text-align: center;
-  transition: filter 0.2s ease, transform 0.16s ease;
+  transition:
+    filter 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mn-selected {
   filter:
-    drop-shadow(0 0 14px rgba(255, 211, 105, 0.82))
-    drop-shadow(0 0 26px rgba(255, 211, 105, 0.45));
-  transform: translateY(-1px);
+    drop-shadow(0 0 18px rgba(255, 211, 105, 0.86))
+    drop-shadow(0 0 34px rgba(255, 211, 105, 0.52));
 }
 
 .mn-glyph {
   position: relative;
   display: grid;
   place-items: center;
-  transition: transform 0.16s ease, filter 0.16s ease;
+  transform: scale(1);
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mn-selected .mn-glyph {
-  transform: scale(1.1);
-  filter: drop-shadow(0 0 18px rgba(255, 211, 105, 0.7));
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 24px rgba(255, 211, 105, 0.76));
+}
+
+.mn-icon,
+.mn-dot,
+.mn-label {
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    text-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mn-selected .mn-label {
   color: #ffe291;
-  text-shadow: 0 0 10px rgba(255, 211, 105, 0.55);
+  text-shadow: 0 0 14px rgba(255, 211, 105, 0.62);
 }
 
 .mn-selected .mn-dot {
-  box-shadow: 0 0 14px rgba(255, 211, 105, 0.78);
+  box-shadow: 0 0 18px rgba(255, 211, 105, 0.82);
 }
 
 .mn:hover {

@@ -41,6 +41,8 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 - 2026-04-13: Replaced circular selected-node pulse/ring animation with a stronger static glow treatment (glyph scale + brighter halo + label glow) for clearer multi-select visibility.
 - 2026-04-13: LLM pipeline now auto-retries with fallback Gemini models when the primary model returns transient capacity errors (e.g., 503/high-demand), reducing user-visible failures.
 - 2026-04-13: Workspace tabs now isolate runtime loading/status containers, so generating a diagram in one tab no longer shows the loader overlay or operation state in other tabs.
+- 2026-04-13: Smoothed multi-select highlighting by applying node selection state immediately in click handlers (removed one-frame delayed effect-based sync), reducing visible step/lag when selecting multiple nodes.
+- 2026-04-13: Retuned selected-node highlight to restore larger visual emphasis and use a single slower easing curve (no staged jump), making multi-select expansion feel smoother.
 - 2026-04-12: PNG export now defaults to Full graph and renders all nodes into one image instead of only the current viewport.
 - 2026-04-12: Refined Recent sessions delete UI to remove extra boxed controls (transparent in-card X overlay) and tightened row spacing.
 - 2026-04-12: Updated the Recent sessions delete toggle to the standard trash can emoji (🗑️) for clearer deletion affordance.

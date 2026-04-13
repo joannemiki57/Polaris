@@ -16,9 +16,9 @@ const NODE_ICONS: Record<string, string> = {
   keyword: "/assets/node-keyword-1.svg",
 };
 
-export function MindNode({ data }: NodeProps<MindNodeData>) {
+export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
   const { kind, label, meta } = data;
-  const isSelected = !!data.isMultiSelected;
+  const isSelected = Boolean(selected || data.isMultiSelected);
   const paperUrl = kind === "paper"
     ? (meta.doi ? `https://doi.org/${meta.doi.replace(/^https?:\/\/doi\.org\//, "")}` : meta.url)
     : undefined;

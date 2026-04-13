@@ -167,6 +167,7 @@ export default function App() {
   const pngExportSettingsRef = useRef<HTMLDivElement | null>(null);
   const cmdbarSettingsRef = useRef<HTMLDivElement | null>(null);
   const activeWorkspaceIdRef = useRef(activeWorkspaceId);
+  const selectedIdsRef = useRef<string[]>(selectedIds);
 
   const busy = activeWorkspaceId ? Boolean(busyByWorkspace[activeWorkspaceId]) : false;
   const showLoader = activeWorkspaceId ? Boolean(showLoaderByWorkspace[activeWorkspaceId]) : false;
@@ -175,6 +176,10 @@ export default function App() {
   useEffect(() => {
     activeWorkspaceIdRef.current = activeWorkspaceId;
   }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   const setWorkspaceBusy = useCallback((workspaceId: string, value: boolean) => {
     setBusyByWorkspace((prev) => {
@@ -208,6 +213,40 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const syncNodeSelectionState = useCallback((nextSelectedIds: string[]) => {
+    const selectedSet = new Set(nextSelectedIds);
+    setNodes((prev) => {
+      let changed = false;
+      const next = prev.map((node) => {
+        const isMultiSelected = selectedSet.has(node.id);
+        const prevIsMultiSelected = Boolean(node.data?.isMultiSelected);
+        const prevSelected = Boolean(node.selected);
+
+        if (prevIsMultiSelected === isMultiSelected && prevSelected === isMultiSelected) {
+          return node;
+        }
+
+        changed = true;
+        return {
+          ...node,
+          selected: isMultiSelected,
+          data: {
+            ...node.data,
+            isMultiSelected,
+          },
+        };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [setNodes]);
+
+  const applySelection = useCallback((nextSelectedIds: string[]) => {
+    selectedIdsRef.current = nextSelectedIds;
+    setSelectedIds(nextSelectedIds);
+    syncNodeSelectionState(nextSelectedIds);
+  }, [syncNodeSelectionState]);
 
   // Keep loader mounted during fade-out after busy ends, then center graph
   useEffect(() => {
@@ -358,7 +397,16 @@ export default function App() {
       setEdges([]);
       return;
     }
-    const { nodes: targetNodes, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
+    const { nodes: rawTargetNodes, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
+    const selectedSet = new Set(selectedIdsRef.current);
+    const targetNodes = rawTargetNodes.map((node) => ({
+      ...node,
+      selected: selectedSet.has(node.id),
+      data: {
+        ...node.data,
+        isMultiSelected: selectedSet.has(node.id),
+      },
+    }));
     setEdges(e);
 
     // Capture current positions for lerp animation
@@ -422,32 +470,6 @@ export default function App() {
   }, [graph, selectedIds]);
 
   useEffect(() => {
-    const selectedSet = new Set(selectedIds);
-    setNodes((prev) => {
-      let changed = false;
-      const next = prev.map((node) => {
-        const isMultiSelected = selectedSet.has(node.id);
-        const prevIsMultiSelected = Boolean(node.data?.isMultiSelected);
-
-        if (prevIsMultiSelected === isMultiSelected) {
-          return node;
-        }
-
-        changed = true;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            isMultiSelected,
-          },
-        };
-      });
-
-      return changed ? next : prev;
-    });
-  }, [selectedIds, setNodes]);
-
-  useEffect(() => {
     if (selectedNodes.length === 1) {
       setPaperQuery(selectedNodes[0]!.label);
     }
@@ -463,19 +485,18 @@ export default function App() {
   const combinedMayBeBroad = selectedNodes.length >= 4;
 
   const onNodeClick = useCallback((evt: ReactMouseEvent, node: FlowNode) => {
-    setSelectedIds((prev) => {
-      if (evt.shiftKey) {
-        return prev.includes(node.id)
+    const prev = selectedIdsRef.current;
+    const next = evt.shiftKey
+      ? (prev.includes(node.id)
           ? prev.filter((x) => x !== node.id)
-          : [...prev, node.id];
-      }
-      return [node.id];
-    });
-  }, []);
+          : [...prev, node.id])
+      : [node.id];
+    applySelection(next);
+  }, [applySelection]);
 
   const onPaneClick = useCallback(() => {
-    setSelectedIds([]);
-  }, []);
+    applySelection([]);
+  }, [applySelection]);
 
   const onNodesDelete = useCallback((deletedNodes: FlowNode[]) => {
     if (!graph || deletedNodes.length === 0) return;
@@ -491,8 +512,8 @@ export default function App() {
       ),
       updatedAt: new Date().toISOString(),
     });
-    setSelectedIds((prev) => prev.filter((id) => !subtreeIds.has(id)));
-  }, [graph]);
+    applySelection(selectedIdsRef.current.filter((id) => !subtreeIds.has(id)));
+  }, [graph, applySelection]);
 
   const runExpand = async (q?: string) => {
     const workspaceId = activeWorkspaceId;
@@ -518,7 +539,7 @@ export default function App() {
       if (activeWorkspaceIdRef.current === workspaceId) {
         setQuestion(query);
         setGraph(g);
-        setSelectedIds([]);
+        applySelection([]);
       }
       setWorkspaceStatus(workspaceId, "Graph ready.");
     } catch (e) {
@@ -799,7 +820,7 @@ export default function App() {
     archiveSession({ question, graph });
     setSessionHistory(loadSessionHistory());
     setGraph(null);
-    setSelectedIds([]);
+    applySelection([]);
     setQuestion("");
     if (activeWorkspaceId) {
       setWorkspaceStatus(activeWorkspaceId, "");
@@ -822,7 +843,7 @@ export default function App() {
     setActiveWorkspaceId(next.id);
     setQuestion("");
     setGraph(null);
-    setSelectedIds([]);
+    applySelection([]);
     setDeepPageKeyword(null);
     setWorkspaceStatus(next.id, `Created ${next.name}.`);
     setBoot("workspace");
@@ -839,7 +860,7 @@ export default function App() {
     setActiveWorkspaceId(id);
     setQuestion(target.question);
     setGraph(target.graph);
-    setSelectedIds([]);
+    applySelection([]);
     setDeepPageKeyword(null);
     setWorkspaceStatus(id, `Switched to ${target.name}.`);
   };
@@ -868,7 +889,7 @@ export default function App() {
       setActiveWorkspaceId(fallback.id);
       setQuestion(fallback.question);
       setGraph(fallback.graph);
-      setSelectedIds([]);
+      applySelection([]);
     }
   };
 
@@ -907,7 +928,7 @@ export default function App() {
       setActiveWorkspaceId(target.id);
       setQuestion(target.question);
       setGraph(target.graph);
-      setSelectedIds([]);
+      applySelection([]);
       setDeepPageKeyword(null);
       setSessionHistory(promoteSessionRecord(record.id));
       if (!target.graph && target.question.trim()) {
@@ -938,7 +959,7 @@ export default function App() {
     setActiveWorkspaceId(fromRecent.id);
     setQuestion(fromRecent.question);
     setGraph(fromRecent.graph);
-    setSelectedIds([]);
+    applySelection([]);
     setDeepPageKeyword(null);
     setSessionHistory(promoteSessionRecord(record.id));
     if (!record.graph && record.question.trim()) {
@@ -1126,7 +1147,7 @@ export default function App() {
                 type="button"
                 className="selection-clear-btn"
                 disabled={selectedIds.length === 0}
-                onClick={() => setSelectedIds([])}
+                onClick={() => applySelection([])}
                 title="Deselect all selected nodes"
               >
                 Deselect all

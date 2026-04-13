@@ -12,6 +12,12 @@
 - Split graph-generation runtime state by workspace tab:
   - `busy`, `status`, and loading overlay visibility are now tracked per workspace container.
   - Async operations update only the workspace that started them, so switching tabs keeps already-created diagrams accessible while another tab is generating.
+- Smoothed multi-select node highlighting:
+  - Selection visual state is now applied immediately in click/clear/delete handlers.
+  - Removed delayed effect-based selection sync path that caused stepped glow updates during rapid multi-select.
+- Refined selected-node emphasis animation:
+  - Increased selected visual scale/intensity back to a larger emphasis level.
+  - Unified transitions under a single slower ease-out curve to remove the awkward "expand, pause, expand again" feel.
 
 ## Product behavior implemented
 
