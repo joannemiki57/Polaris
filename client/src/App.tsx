@@ -16,6 +16,7 @@ import ReactFlow, {
   type Node as FlowNode,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -33,6 +34,7 @@ import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
 import { mindGraphToFlow, type EdgeLineMode, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
+import { ConstellationLoader } from "./ConstellationLoader";
 import { ParallelStraightEdge } from "./ParallelStraightEdge";
 import {
   archiveSession,
@@ -159,9 +161,25 @@ export default function App() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [showLoader, setShowLoader] = useState(false);
+  const { fitView: rfFitView } = useReactFlow();
   const flowRef = useRef<HTMLDivElement | null>(null);
   const pngExportSettingsRef = useRef<HTMLDivElement | null>(null);
   const cmdbarSettingsRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep loader mounted during fade-out after busy ends, then center graph
+  useEffect(() => {
+    if (busy) {
+      setShowLoader(true);
+    } else if (showLoader) {
+      const t = setTimeout(() => {
+        setShowLoader(false);
+        // Re-center the graph after the loader fades out
+        requestAnimationFrame(() => rfFitView({ duration: 400, padding: 0.12 }));
+      }, 700);
+      return () => clearTimeout(t);
+    }
+  }, [busy]);
 
   useEffect(() => {
     try {
@@ -1086,6 +1104,7 @@ export default function App() {
                 </div>
               </form>
             </div>
+            {showLoader && <ConstellationLoader status={status} visible={busy} />}
             <ReactFlow
               nodes={nodes}
               edges={edges}

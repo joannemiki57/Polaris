@@ -1412,3 +1412,196 @@ a {
     overflow: hidden;
   }
 }
+
+/* ══════════════════════════════════════════
+   Constellation Loader — shimmer animation
+   ══════════════════════════════════════════ */
+
+.cl-container {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 120px;
+  background: #09090b;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.6s ease-out;
+}
+
+.cl-container-exit {
+  opacity: 0;
+}
+
+.cl-svg {
+  width: min(70vw, 600px);
+  height: min(70vh, 600px);
+}
+
+/* ── Edges ── */
+
+.cl-edge {
+  stroke: rgba(255, 211, 105, 0.08);
+  stroke-width: 0.18;
+  stroke-linecap: round;
+  opacity: 0;
+}
+
+.cl-edge-visible {
+  animation: cl-edge-draw 1.6s ease-out forwards;
+}
+
+@keyframes cl-edge-draw {
+  0% {
+    opacity: 0;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+  }
+  50% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 1;
+    stroke: rgba(255, 211, 105, 0.22);
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Stars ── */
+
+.cl-star {
+  fill: #ffd369;
+  opacity: 0;
+  transform-origin: center;
+}
+
+.cl-star-visible {
+  animation: cl-star-appear 1.2s ease-out forwards;
+}
+
+.cl-star-t0 {
+  fill: #ffd369;
+}
+
+.cl-star-t1 {
+  fill: #ffd369;
+}
+
+.cl-star-t2 {
+  fill: rgba(255, 211, 105, 0.65);
+}
+
+@keyframes cl-star-appear {
+  0% {
+    opacity: 0;
+    r: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ── Center ring pulse ── */
+
+.cl-center-ring {
+  fill: none;
+  stroke: rgba(255, 211, 105, 0.18);
+  stroke-width: 0.3;
+  animation: cl-ring-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes cl-ring-pulse {
+  0%, 100% {
+    r: 4;
+    opacity: 0.3;
+  }
+  50% {
+    r: 6.5;
+    opacity: 0.06;
+  }
+}
+
+/* ── Twinkle ── */
+
+.cl-twinkle {
+  fill: #fff;
+  opacity: 0;
+  animation: cl-twinkle 3s ease-in-out infinite;
+}
+
+@keyframes cl-twinkle {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+/* ── Status area ── */
+
+.cl-status {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.cl-status-text {
+  color: rgba(255, 211, 105, 0.7);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0 0 10px;
+  animation: cl-status-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes cl-status-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Bouncing dots ── */
+
+.cl-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.cl-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffd369;
+  opacity: 0.3;
+  animation: cl-dot-bounce 1.6s ease-in-out infinite;
+}
+
+.cl-dot:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.cl-dot:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+@keyframes cl-dot-bounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
