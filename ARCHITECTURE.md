@@ -163,7 +163,8 @@ User selects keyword node → enters search query → "Attach papers"
 
 | Service | What We Use | Auth |
 |---------|------------|------|
-| **Google Gemini** | Graph expansion, keyword extraction, deep answers, paper chat | `GEMINI_API_KEY` |
+| **Google Gemini** | Graph expansion, keyword extraction, deep answers, paper chat (primary + tertiary retry) | `GEMINI_API_KEY` |
+| **OpenAI** | Optional middle-step LLM on transient Gemini errors | `OPENAI_API_KEY` |
 | **OpenAlex** | Paper search, metadata, abstracts, topics, keywords | `OPENALEX_MAILTO` (polite pool) |
 
 ---

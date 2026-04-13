@@ -84,9 +84,166 @@ function parseMindGraph(raw: string): MindGraph {
   };
 }
 
+const _geminiCache = new Map<string, ReturnType<GoogleGenerativeAI["getGenerativeModel"]>>();
+
 function getGemini(apiKey: string, model: string) {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({ model });
+  const key = `${apiKey}:${model}`;
+  let cached = _geminiCache.get(key);
+  if (!cached) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    cached = genAI.getGenerativeModel({ model });
+    _geminiCache.set(key, cached);
+  }
+  return cached;
+}
+
+/** Shape we pass to `generateContent` everywhere in this module (structured chat + optional JSON mode). */
+type PolarisGenerateContentRequest = {
+  contents: Array<{
+    role: "user" | "model";
+    parts: { text: string }[];
+  }>;
+  generationConfig?: {
+    temperature?: number;
+    responseMimeType?: string;
+  };
+};
+
+type GeminiGenerateArg = Parameters<ReturnType<typeof getGemini>["generateContent"]>[0];
+
+type LlmStep =
+  | { provider: "gemini"; model: string }
+  | { provider: "openai"; model: string };
+
+function buildLlmFallbackChain(primaryGeminiModel: string): LlmStep[] {
+  const openaiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  const openaiModel = (process.env.OPENAI_MODEL ?? "gpt-4o-mini").trim() || "gpt-4o-mini";
+  const tertiary =
+    (process.env.GEMINI_TERTIARY_MODEL ?? "gemini-3-flash-preview").trim() ||
+    "gemini-3-flash-preview";
+
+  const steps: LlmStep[] = [{ provider: "gemini", model: primaryGeminiModel }];
+  if (openaiKey) steps.push({ provider: "openai", model: openaiModel });
+  if (tertiary !== primaryGeminiModel) {
+    steps.push({ provider: "gemini", model: tertiary });
+  }
+  return steps;
+}
+
+function stepLabel(step: LlmStep): string {
+  return step.provider === "gemini" ? `gemini/${step.model}` : `openai/${step.model}`;
+}
+
+function getErrorStatus(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  if (!("status" in err)) return undefined;
+  const value = (err as { status?: unknown }).status;
+  return typeof value === "number" ? value : undefined;
+}
+
+function isCapacityOrTransientError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 503 || status === 429 || status === 502 || status === 404) return true;
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|no longer available|not found|503|429|502|404|overloaded|timeout)/i.test(
+    message,
+  );
+}
+
+async function generateOpenAIChat(
+  apiKey: string,
+  model: string,
+  request: PolarisGenerateContentRequest,
+): Promise<string> {
+  const gen = request.generationConfig ?? {};
+  const temperature = typeof gen.temperature === "number" ? gen.temperature : 0.7;
+  const wantJson = gen.responseMimeType === "application/json";
+
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [];
+  if (wantJson) {
+    messages.push({
+      role: "system",
+      content:
+        "You must respond with only a single valid JSON object (no markdown fences, no commentary).",
+    });
+  }
+  for (const block of request.contents) {
+    const text = block.parts.map((p: { text: string }) => p.text).join("\n");
+    const role = block.role === "user" ? "user" : "assistant";
+    messages.push({ role, content: text });
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature,
+  };
+  if (wantJson) body.response_format = { type: "json_object" };
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    const err = new Error(`OpenAI ${res.status}: ${raw.slice(0, 400)}`);
+    Object.assign(err, { status: res.status });
+    throw err;
+  }
+  let json: { choices?: { message?: { content?: string | null } }[] };
+  try {
+    json = JSON.parse(raw) as { choices?: { message?: { content?: string | null } }[] };
+  } catch {
+    throw new Error("OpenAI: invalid JSON response");
+  }
+  const text = json.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error(`Empty OpenAI response from ${model}`);
+  return text;
+}
+
+async function generateTextWithFallback(
+  geminiApiKey: string,
+  primaryModel: string,
+  request: PolarisGenerateContentRequest,
+): Promise<string> {
+  const steps = buildLlmFallbackChain(primaryModel);
+  const openaiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  let lastError: unknown;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    const hasNext = i < steps.length - 1;
+    try {
+      let text: string;
+      if (step.provider === "gemini") {
+        const gemini = getGemini(geminiApiKey, step.model);
+        const result = await gemini.generateContent(request as GeminiGenerateArg);
+        text = result.response.text() ?? "";
+        if (!text) throw new Error(`Empty Gemini response from ${step.model}`);
+      } else {
+        if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
+        text = await generateOpenAIChat(openaiKey, step.model, request);
+      }
+      if (i > 0) {
+        console.warn(
+          `[llm] fallback succeeded: ${stepLabel(step)} (primary was ${stepLabel(steps[0]!)})`,
+        );
+      }
+      return text;
+    } catch (err) {
+      lastError = err;
+      if (!hasNext || !isCapacityOrTransientError(err)) throw err;
+      console.warn(
+        `[llm] ${stepLabel(step)} failed (${err instanceof Error ? err.message : String(err)}); trying ${stepLabel(steps[i + 1]!)}`,
+      );
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("LLM request failed");
 }
 
 export async function expandQuestionToGraph(
@@ -96,8 +253,7 @@ export async function expandQuestionToGraph(
 ): Promise<MindGraph> {
   if (!apiKey) return mockExpand(question);
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -117,8 +273,6 @@ export async function expandQuestionToGraph(
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   return parseMindGraph(text);
 }
 
@@ -179,8 +333,7 @@ ${articleSection || "(none found)"}
 
 From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -200,8 +353,6 @@ From the topics and abstracts above, extract specific research-level keywords an
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   return parseMindGraph(text);
 }
 
@@ -225,23 +376,29 @@ function getAncestry(
   return ancestors;
 }
 
-const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
+function deltaExpansionHint(sparsePapers: boolean): string {
+  const overlapRule = sparsePapers
+    ? "Paper context is sparse or missing usable abstracts: still return 3–5 concrete keyword nodes grounded in the SELECTED node labels, ancestry, and the user's original question. Use abstracts when they exist; you do NOT need a concept to appear in 2+ abstracts."
+    : "Analyze the paper abstracts and identify RECURRING / OVERLAPPING concepts that appear across MULTIPLE papers. Prefer concepts that appear in 2+ abstracts when possible.";
+
+  return `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
     { "id": "unique_id", "kind": "keyword", "label": "...", "summary": "one sentence" }
   ],
   "new_edges": [
-    { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for" }
+    { "id": "e_unique", "source": "selected_node_id", "target": "new_keyword_id", "kind": "expands_to" }
   ]
 }
 Rules:
-- You are given RESEARCH PAPERS (with abstracts) retrieved from OpenAlex for the selected node context.
-- Analyze the paper abstracts and identify RECURRING / OVERLAPPING concepts that appear across MULTIPLE papers.
-- Return at most 5 keyword nodes — only concepts that are shared or recurring across the papers. Quality over quantity.
+- ${overlapRule}
+- Return at least 2 and at most 5 keyword nodes (never return an empty new_nodes array).
 - Each keyword must be a specific research-level concept (e.g., "gradient compression", "non-IID data"), NOT generic terms like "computer science", "AI", "methods".
-- The summary should mention which papers (by short title) share this concept.
-- Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.
+- Summaries should cite paper titles when abstracts exist; otherwise tie the keyword to the selected labels.
+- new_edges: source MUST be one of the selected node ids from the JSON payload below; target MUST be an id from new_nodes. Prefer kind "expands_to" (parent selected → child keyword).
+- Every new_nodes id must be new and MUST NOT appear in existingNodeIds from the payload.
 - Use ASCII snake_case ids derived from the keyword label.`;
+}
 
 function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
   const data = JSON.parse(stripFences(raw)) as {
@@ -317,7 +474,6 @@ export async function expandFromSelection(
     })
     .join("\n\n");
 
-  const gemini = getGemini(apiKey, model);
   const payload = JSON.stringify({
     originalQuestion: question,
     selected: selectedWithAncestry,
@@ -325,24 +481,25 @@ export async function expandFromSelection(
   });
   const userContent = `${payload}
 
-RESEARCH PAPERS (10 top-cited articles from OpenAlex for the selected keywords):
+RESEARCH PAPERS (top-cited articles from OpenAlex for the selected keywords):
 
 ${paperSection || "(no papers found)"}
 
-From the paper abstracts above, find RECURRING research concepts that appear across multiple papers. Return at most 5 keywords that represent the most important overlapping themes specific to "${question}" in the context of the selected nodes.`;
+Produce keywords that help the user explore "${question}" from the selected nodes.`;
 
-  const result = await gemini.generateContent({
+  const abstractsUsable = papers.filter((p) => (p.abstract?.trim().length ?? 0) > 80).length;
+  const sparsePapers = papers.length === 0 || abstractsUsable < 2;
+  const intro = sparsePapers
+    ? "You expand a knowledge graph from selected nodes. When OpenAlex returns few or shallow abstracts, still propose specific research keywords—do not return an empty graph fragment. "
+    : "You analyze research papers to discover OVERLAPPING, RECURRING keywords across multiple papers. ";
+
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
         parts: [
           {
-            text:
-              "You analyze research papers to discover OVERLAPPING, RECURRING keywords across multiple papers. " +
-              "Only extract concepts that appear in 2+ papers' abstracts — this ensures the keywords represent established research directions, not one-off topics. " +
-              DELTA_HINT +
-              "\n\n" +
-              userContent,
+            text: intro + deltaExpansionHint(sparsePapers) + "\n\n" + userContent,
           },
         ],
       },
@@ -352,10 +509,32 @@ From the paper abstracts above, find RECURRING research concepts that appear acr
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   const delta = parseDelta(text);
-  return mergeDelta(base, delta);
+  if (delta.new_nodes.length > 0) {
+    return mergeDelta(base, delta);
+  }
+
+  if (apiKey) {
+    console.warn(
+      "[llm] expandFromSelection: empty new_nodes (sparsePapers=%s paperCount=%s); applying keyword stubs",
+      sparsePapers,
+      papers.length,
+    );
+  }
+  const stamp = Date.now();
+  const extra: GraphNode[] = selected.map((s, i) => ({
+    id: `expand_fb_${stamp}_${i}_${s.id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+    kind: "keyword" as const,
+    label: `Explore: ${s.label}`.slice(0, 80),
+    summary: "Auto-added because the model returned no nodes — try expanding again or adjust selection.",
+  }));
+  const stubEdges: GraphEdge[] = selected.map((s, i) => ({
+    id: `expand_fb_e_${stamp}_${i}`,
+    source: s.id,
+    target: extra[i]!.id,
+    kind: "expands_to" as const,
+  }));
+  return mergeDelta(base, { new_nodes: extra, new_edges: stubEdges });
 }
 
 /* ── Deep answer ── */
@@ -378,8 +557,7 @@ export async function deepAnswer(
     );
   }
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -388,7 +566,7 @@ export async function deepAnswer(
     ],
     generationConfig: { temperature: 0.5 },
   });
-  return result.response.text() ?? "";
+  return text;
 }
 
 /* ── Deep Answer: chat grounded in papers ── */
@@ -447,7 +625,6 @@ export async function chatWithPapers(
     );
   }
 
-  const gemini = getGemini(apiKey, model);
   const contents = [
     {
       role: "user" as const,
@@ -467,11 +644,11 @@ export async function chatWithPapers(
     },
   ];
 
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents,
     generationConfig: { temperature: 0.4 },
   });
-  return result.response.text() ?? "";
+  return text;
 }
 
 /* ── Paper section-keyword extraction ── */
@@ -517,8 +694,7 @@ ${abs}
 
 Extract the specific section-level research concepts this paper covers. What would the section headings (2.1, 2.2, 3.1, etc.) of this paper be about?`;
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -538,8 +714,6 @@ Extract the specific section-level research concepts this paper covers. What wou
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   const data = JSON.parse(stripFences(text)) as {
     keywords?: { id: string; label: string; summary: string }[];
   };

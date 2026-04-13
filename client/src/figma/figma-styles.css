@@ -131,6 +131,24 @@
   max-width: 520px;
 }
 
+.fg-home-logo-wrap {
+  margin: 0 0 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.fg-home-logo {
+  width: min(180px, 42vw);
+  height: auto;
+  max-height: 84px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 8px 18px rgba(255, 211, 105, 0.18))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.35));
+  opacity: 0;
+  animation: fg-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.16s forwards;
+}
+
 .fg-splash-eyebrow {
   margin: 0 0 16px;
   font-family: 'Inter', system-ui, sans-serif;

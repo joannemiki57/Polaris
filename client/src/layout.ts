@@ -2,6 +2,14 @@ import type { Edge, Node } from "reactflow";
 import type { GraphEdge, MindGraph } from "./graphTypes";
 
 export type LayoutMode = "tree" | "radial";
+export type EdgeLineMode = "diagonal" | "parallel";
+
+type TreeMeta = {
+  children: Map<string, string[]>;
+  depth: Map<string, number>;
+  parent: Map<string, string>;
+  roots: string[];
+};
 
 function findRoots(g: MindGraph): string[] {
   const targets = new Set(g.edges.map((e) => e.target));
@@ -14,6 +22,52 @@ function findRoots(g: MindGraph): string[] {
 }
 
 interface Vec { x: number; y: number }
+
+function buildTreeMeta(g: MindGraph): TreeMeta {
+  const labels = new Map(g.nodes.map((n) => [n.id, n.label]));
+  const children = new Map<string, string[]>();
+  for (const n of g.nodes) children.set(n.id, []);
+
+  for (const e of g.edges) {
+    const row = children.get(e.source);
+    if (!row) continue;
+    if (!row.includes(e.target)) row.push(e.target);
+  }
+  for (const row of children.values()) {
+    row.sort((a, b) => (labels.get(a) ?? a).localeCompare(labels.get(b) ?? b));
+  }
+
+  const seedRoots = findRoots(g);
+  const depth = new Map<string, number>();
+  const parent = new Map<string, string>();
+  const q = [...seedRoots];
+  for (const r of seedRoots) depth.set(r, 0);
+
+  while (q.length) {
+    const u = q.shift()!;
+    const nextDepth = (depth.get(u) ?? 0) + 1;
+    for (const v of children.get(u) ?? []) {
+      if (!depth.has(v)) {
+        depth.set(v, nextDepth);
+        parent.set(v, u);
+        q.push(v);
+      }
+    }
+  }
+
+  const extraRoots = g.nodes
+    .map((n) => n.id)
+    .filter((id) => !depth.has(id))
+    .sort((a, b) => (labels.get(a) ?? a).localeCompare(labels.get(b) ?? b));
+  for (const id of extraRoots) depth.set(id, 0);
+
+  return {
+    children,
+    depth,
+    parent,
+    roots: [...seedRoots, ...extraRoots],
+  };
+}
 
 function forceDirectedLayout(g: MindGraph): Map<string, Vec> {
   const roots = new Set(findRoots(g));
@@ -147,56 +201,61 @@ function forceDirectedLayout(g: MindGraph): Map<string, Vec> {
   return positions;
 }
 
-function treeLayout(g: MindGraph): Map<string, Vec> {
-  const adj = new Map<string, string[]>();
-  for (const e of g.edges) {
-    if (!adj.has(e.source)) adj.set(e.source, []);
-    adj.get(e.source)!.push(e.target);
-  }
+function treeLayout(g: MindGraph, meta: TreeMeta): Map<string, Vec> {
+  const { children, depth, parent, roots } = meta;
 
-  const roots = findRoots(g);
-  const level = new Map<string, number>();
-  const q = [...roots];
-  for (const r of roots) level.set(r, 0);
-  while (q.length) {
-    const u = q.shift()!;
-    const L = level.get(u) ?? 0;
-    for (const v of adj.get(u) ?? []) {
-      if (!level.has(v)) {
-        level.set(v, L + 1);
-        q.push(v);
-      }
+  const y = new Map<string, number>();
+  const yGap = 110;
+  let cursor = 0;
+  const place = (id: string): number => {
+    const kids = (children.get(id) ?? []).filter((c) => parent.get(c) === id);
+    if (kids.length === 0) {
+      const leafY = cursor * yGap;
+      cursor += 1;
+      y.set(id, leafY);
+      return leafY;
     }
-  }
-  for (const n of g.nodes) {
-    if (!level.has(n.id)) level.set(n.id, 1);
+    const vals = kids.map((k) => place(k));
+    const sortedVals = [...vals].sort((a, b) => a - b);
+    const mid = Math.floor(sortedVals.length / 2);
+    const centerY = sortedVals.length % 2 === 1
+      ? sortedVals[mid]!
+      : ((sortedVals[mid - 1]! + sortedVals[mid]!) / 2);
+    y.set(id, centerY);
+    return centerY;
+  };
+
+  for (const r of roots) {
+    place(r);
+    cursor += 0.6;
   }
 
-  const byLevel = new Map<number, string[]>();
-  for (const n of g.nodes) {
-    const lv = level.get(n.id) ?? 0;
-    if (!byLevel.has(lv)) byLevel.set(lv, []);
-    byLevel.get(lv)!.push(n.id);
-  }
+  const allY = [...y.values()];
+  const center = allY.length > 0
+    ? (Math.min(...allY) + Math.max(...allY)) / 2
+    : 0;
 
-  const positions = new Map<string, Vec>();
-  const sortedLevels = [...byLevel.keys()].sort((a, b) => a - b);
   const xGap = 320;
-  const yGap = 100;
-  for (const lv of sortedLevels) {
-    const row = byLevel.get(lv)!;
-    row.forEach((id, i) => {
-      positions.set(id, {
-        x: lv * xGap,
-        y: i * yGap - (row.length * yGap) / 2,
-      });
+  const positions = new Map<string, Vec>();
+  for (const n of g.nodes) {
+    positions.set(n.id, {
+      x: (depth.get(n.id) ?? 0) * xGap,
+      y: (y.get(n.id) ?? 0) - center,
     });
   }
+
   return positions;
 }
 
-export function mindGraphToFlow(g: MindGraph, layoutMode: LayoutMode = "radial"): { nodes: Node[]; edges: Edge[] } {
-  const positions = layoutMode === "tree" ? treeLayout(g) : forceDirectedLayout(g);
+export function mindGraphToFlow(
+  g: MindGraph,
+  layoutMode: LayoutMode = "radial",
+  edgeLineMode: EdgeLineMode = "diagonal",
+): { nodes: Node[]; edges: Edge[] } {
+  const treeMeta = layoutMode === "tree" ? buildTreeMeta(g) : null;
+  const positions = layoutMode === "tree" && treeMeta
+    ? treeLayout(g, treeMeta)
+    : forceDirectedLayout(g);
 
   const nodes: Node[] = g.nodes.map((n, idx) => {
     const pos = positions.get(n.id) ?? { x: 0, y: 0 };
@@ -233,14 +292,28 @@ export function mindGraphToFlow(g: MindGraph, layoutMode: LayoutMode = "radial")
     user_linked: "rgba(156, 163, 175, 0.18)",
   };
 
-  const edges: Edge[] = g.edges.map((e: GraphEdge) => ({
+  const renderedEdges = layoutMode === "tree" && edgeLineMode === "parallel" && treeMeta
+    ? g.edges.filter((e) => treeMeta.parent.get(e.target) === e.source)
+    : g.edges;
+
+  const edges: Edge[] = renderedEdges.map((e: GraphEdge) => ({
     id: e.id,
     source: e.source,
     target: e.target,
-    type: "straight",
+    type: edgeLineMode === "parallel" ? "parallelStraight" : "straight",
+    ...(layoutMode === "tree" && edgeLineMode === "parallel"
+      ? {
+          sourceHandle: "s-right",
+          targetHandle: "t-left",
+        }
+      : {}),
     style: {
-      stroke: edgeColor[e.kind] ?? "rgba(156, 163, 175, 0.15)",
-      strokeWidth: e.kind === "expands_to" ? 1.2 : 0.8,
+      stroke: edgeLineMode === "parallel"
+        ? "#5b522f"
+        : (edgeColor[e.kind] ?? "rgba(156, 163, 175, 0.15)"),
+      strokeWidth: edgeLineMode === "parallel"
+        ? 1
+        : (e.kind === "expands_to" ? 1.2 : 0.8),
     },
     labelStyle: { fill: "transparent", fontSize: 0 },
   }));

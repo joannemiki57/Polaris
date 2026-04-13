@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import compression from "compression";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -36,10 +37,12 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = Number(process.env.PORT) || 8787;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const OPENALEX_MAILTO = process.env.OPENALEX_MAILTO;
 const S2_API_KEY = process.env.S2_API_KEY;
 
+app.use(compression());
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
@@ -52,7 +55,11 @@ const candidatePaths = [
 const clientDist = candidatePaths.find((p) => fs.existsSync(p)) ?? candidatePaths[0]!;
 console.log(`[static] clientDist=${clientDist} exists=${fs.existsSync(clientDist)}`);
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  app.use(express.static(clientDist, {
+    maxAge: "7d",
+    immutable: true,
+    index: false,
+  }));
 }
 
 const apiLimiter = rateLimit({
@@ -73,6 +80,7 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     llm: Boolean(GEMINI_KEY),
+    openai: Boolean(OPENAI_KEY?.trim()),
     openAlexMailto: Boolean(OPENALEX_MAILTO),
   });
 });
@@ -128,13 +136,13 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
 
 app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
   try {
-    const question = String(req.body?.question ?? "").trim();
+    const questionRaw = String(req.body?.question ?? "").trim();
     const selected = req.body?.selected as
       | { id: string; label: string; kind: string }[]
       | undefined;
     const base = req.body?.graph as MindGraph | undefined;
-    if (!question || !Array.isArray(selected) || selected.length === 0) {
-      res.status(400).json({ error: "question and selected[] required" });
+    if (!Array.isArray(selected) || selected.length === 0) {
+      res.status(400).json({ error: "selected[] required" });
       return;
     }
     if (!base || !Array.isArray(base.nodes)) {
@@ -158,6 +166,11 @@ app.post("/api/graph/expand-selection", apiLimiter, async (req, res) => {
       return [...ancestors.reverse(), node?.label ?? s.label].join(" ");
     });
     const combinedQuery = searchQueries.join(" ");
+    const question =
+      questionRaw ||
+      combinedQuery.trim() ||
+      (typeof base.title === "string" ? base.title.trim() : "") ||
+      "research";
 
     // Fetch papers (same as deep-answer/init: 10 articles, citation desc)
     const papers = await searchResearchPapers(combinedQuery, OPENALEX_MAILTO, 10);
@@ -566,25 +579,26 @@ app.post("/api/graph/keywords-from-starred-papers", apiLimiter, async (req, res)
       });
     };
 
-    for (const paper of starredPapers) {
+    await Promise.all(starredPapers.map(async (paper) => {
       const title = paper.title ?? "Untitled";
 
-      try {
-        const sections = await fetchPaperSections(title, undefined, S2_API_KEY);
-        for (const sec of sections.slice(0, 8)) {
+      const [sectionsResult, detailResult] = await Promise.allSettled([
+        fetchPaperSections(title, undefined, S2_API_KEY),
+        fetchWorkDetail(paper.id, OPENALEX_MAILTO),
+      ]);
+
+      if (sectionsResult.status === "fulfilled") {
+        for (const sec of sectionsResult.value.slice(0, 8)) {
           putCandidate(
             sec.name,
-            `Section heading in starred paper \"${title}\" (${sec.snippetCount} snippets).`,
+            `Section heading in starred paper "${title}" (${sec.snippetCount} snippets).`,
             2,
           );
         }
-      } catch {
-        // Section API may fail for some papers; continue with other sources.
       }
 
-      try {
-        const detail = await fetchWorkDetail(paper.id, OPENALEX_MAILTO);
-
+      if (detailResult.status === "fulfilled") {
+        const detail = detailResult.value;
         for (const topic of detail.topics.slice(0, 8)) {
           putCandidate(
             topic.displayName,
@@ -614,13 +628,11 @@ app.post("/api/graph/keywords-from-starred-papers", apiLimiter, async (req, res)
               putCandidate(kw.label, kw.summary, 3);
             }
           } catch {
-            // LLM extraction may fail for some papers; keep deterministic candidates.
+            // LLM extraction may fail; keep deterministic candidates.
           }
         }
-      } catch {
-        // OpenAlex detail call may fail for some papers.
       }
-    }
+    }));
 
     const ranked = [...candidates.values()]
       .sort((a, b) => b.score - a.score)
@@ -747,5 +759,8 @@ if (fs.existsSync(clientDist)) {
 }
 
 app.listen(PORT, () => {
-  console.log(`API http://localhost:${PORT} [gemini/${GEMINI_MODEL}]`);
+  console.log(
+    `API http://localhost:${PORT} [llm primary gemini/${GEMINI_MODEL}` +
+      `${OPENAI_KEY?.trim() ? `; OpenAI fallback` : ""}]`,
+  );
 });

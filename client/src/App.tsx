@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -6,7 +8,6 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { toPng } from "html-to-image";
 import ReactFlow, {
   Background,
   Controls,
@@ -27,8 +28,10 @@ import {
   expandSelection,
   health,
 } from "./api";
-import { DeepAnswerPage } from "./DeepAnswerPage";
-import { HomePage } from "./figma/HomePage";
+
+const DeepAnswerPage = lazy(() => import("./DeepAnswerPage").then((m) => ({ default: m.DeepAnswerPage })));
+const HomePage = lazy(() => import("./figma/HomePage").then((m) => ({ default: m.HomePage })));
+
 import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
 import { mindGraphToFlow, type LayoutMode } from "./layout";
@@ -136,6 +139,7 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [apiHealth, setApiHealth] = useState<{
     llm: boolean;
+    openai?: boolean;
     openAlexMailto: boolean;
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -173,7 +177,13 @@ export default function App() {
 
   useEffect(() => {
     health()
-      .then((h) => setApiHealth({ llm: h.llm, openAlexMailto: h.openAlexMailto }))
+      .then((h) =>
+        setApiHealth({
+          llm: h.llm,
+          openai: h.openai,
+          openAlexMailto: h.openAlexMailto,
+        }),
+      )
       .catch(() => setApiHealth(null));
   }, []);
 
@@ -477,6 +487,7 @@ export default function App() {
         };
       }
 
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(target, {
         cacheBust: true,
         pixelRatio: 2,
@@ -666,14 +677,16 @@ export default function App() {
   // Deep Answer page (full-screen)
   if (deepPageKeyword) {
     return (
-      <DeepAnswerPage
-        workspaceId={activeWorkspaceId}
-        keyword={deepPageKeyword}
-        keywordNodeId={deepPageNodeId!}
-        ancestors={deepPageAncestors}
-        onBack={() => setDeepPageKeyword(null)}
-        onUseStarredKeywords={useStarredPapersForKeywords}
-      />
+      <Suspense fallback={<div className="fg-boot-screen" aria-busy="true"><div className="fg-boot-pulse" /></div>}>
+        <DeepAnswerPage
+          workspaceId={activeWorkspaceId}
+          keyword={deepPageKeyword}
+          keywordNodeId={deepPageNodeId!}
+          ancestors={deepPageAncestors}
+          onBack={() => setDeepPageKeyword(null)}
+          onUseStarredKeywords={useStarredPapersForKeywords}
+        />
+      </Suspense>
     );
   }
 
@@ -686,7 +699,11 @@ export default function App() {
   }
 
   if (boot === "splash") {
-    return <HomePage onContinue={finishSplash} />;
+    return (
+      <Suspense fallback={<div className="fg-boot-screen" aria-busy="true"><div className="fg-boot-pulse" /></div>}>
+        <HomePage onContinue={finishSplash} />
+      </Suspense>
+    );
   }
 
   // Main workspace (graph may still be null — ask from command bar)
@@ -746,7 +763,8 @@ export default function App() {
         <div className="navbar-right">
           {apiHealth && (
             <span className="navbar-health">
-              LLM: {apiHealth.llm ? "on" : "mock"} · OpenAlex:{" "}
+              LLM: {apiHealth.llm ? "on" : "mock"}
+              {apiHealth.openai ? " · OpenAI fb: on" : ""} · OpenAlex:{" "}
               {apiHealth.openAlexMailto ? "set" : "—"}
             </span>
           )}
@@ -979,23 +997,29 @@ export default function App() {
                 </div>
               </form>
             </div>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onNodesDelete={onNodesDelete}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              nodeTypes={nodeTypes}
-              fitView
-              minZoom={0.2}
-              maxZoom={1.5}
-            >
-              <MiniMap pannable zoomable />
-              <Controls />
-              <Background gap={24} color="rgba(75, 85, 99, 0.15)" />
-            </ReactFlow>
+            {graph ? (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onNodesDelete={onNodesDelete}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                fitView
+                minZoom={0.2}
+                maxZoom={1.5}
+              >
+                <MiniMap pannable zoomable />
+                <Controls />
+                <Background gap={24} color="rgba(75, 85, 99, 0.15)" />
+              </ReactFlow>
+            ) : (
+              <div className="empty-canvas" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "rgba(255,255,255,0.3)", fontSize: 15 }}>
+                Enter a research question above to generate your graph.
+              </div>
+            )}
           </div>
 
           {/* Deep panel */}

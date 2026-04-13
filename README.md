@@ -415,7 +415,7 @@ Requires an optional `S2_API_KEY` for higher rate limits. Works without a key at
 
 ## LLM integration
 
-`server/src/llm.ts` handles all LLM interactions via the Google Generative AI SDK (Gemini):
+`server/src/llm.ts` handles all LLM interactions: primary calls use the Google Generative AI SDK (Gemini), with optional OpenAI Chat Completions as a transient-error fallback when `OPENAI_API_KEY` is set:
 
 | Function | Purpose |
 |----------|---------|
@@ -428,6 +428,8 @@ Requires an optional `S2_API_KEY` for higher rate limits. Works without a key at
 | `chatWithPapers` | Multi-turn conversation grounded in a set of research papers. System prompt includes full paper context; LLM must cite papers inline. |
 
 All LLM calls produce structured JSON (via `responseMimeType: "application/json"`) or markdown, parsed and validated before returning to the client. Temperature ranges from 0.2 (keyword extraction) to 0.5 (deep answers) depending on the task.
+
+When the primary Gemini model hits transient errors (503/high demand, 429, similar), the server retries in order: **OpenAI** (`OPENAI_MODEL`, default `gpt-4o-mini`) if `OPENAI_API_KEY` is set, then a **tertiary Gemini** model (`GEMINI_TERTIARY_MODEL`, default `gemini-3-flash-preview`). The primary model defaults to `gemini-2.5-flash` via `GEMINI_MODEL`.
 
 ---
 
@@ -563,7 +565,7 @@ npm run hooks:install
 npm run session:changelog -- 2026-04-12 "feature 1" "feature 2"
 ```
 
-- `sessions/CHANGELOG.md` follows a Keep a Changelog-style structure (date headings + short bullet entries).
+- `sessions/CHANGELOG.md` uses **[Unreleased] session groups**: each `### YYYY-MM-DD — Topic` block states the date once; bullets stay under that theme. `npm run session:changelog` appends dated lines after `<!-- changelog-append -->` (fold them into a group when tidying).
 - The hook script also appends the same brief update to `agent.md` / `Claude.md` / `VS Code.md` / `cursor.md` when those files exist.
 - Current pre-commit hook blocks code commits if `sessions/CHANGELOG.md` was not updated.
 - Local-only files are ignored from git history: `.githooks/`, `scripts/session-changelog-hook.sh`, `.cursor/mcp.json`, and `Cursor Hack/.obsidian/` metadata.
@@ -573,7 +575,10 @@ npm run session:changelog -- 2026-04-12 "feature 1" "feature 2"
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes (for LLM features) | Google Gemini API key |
-| `GEMINI_MODEL` | No (default: `gemini-2.5-flash`) | Gemini model name |
+| `GEMINI_MODEL` | No (default: `gemini-2.5-flash`) | Primary Gemini model for all LLM calls |
+| `GEMINI_TERTIARY_MODEL` | No (default: `gemini-3-flash-preview`) | Last-resort Gemini model after OpenAI when the primary fails with transient errors |
+| `OPENAI_API_KEY` | No | If set, used as the middle step between primary and tertiary Gemini on transient failures |
+| `OPENAI_MODEL` | No (default: `gpt-4o-mini`) | OpenAI Chat Completions model for that middle step |
 | `OPENALEX_MAILTO` | Recommended | Email for OpenAlex polite pool access |
 | `S2_API_KEY` | No | Semantic Scholar API key for higher rate limits |
 | `PORT` | No (default: `8787`) | Server port |
