@@ -11,6 +11,7 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 - 2026-04-12: Added constellation shimmer loading animation that plays while the graph is generating — central star expands outward to children and grandchildren with golden glow and twinkling effects.
 - 2026-04-12: Graph now smoothly centers (fitView) after loading completes instead of appearing off to the side or in a corner.
 - 2026-04-12: Loading animation fades out smoothly when the graph is ready, instead of disappearing abruptly.
+- 2026-04-12: Graph layout transitions are now animated with a 500ms ease-out cubic lerp when nodes are deleted or the layout changes, instead of snapping instantly.
 - 2026-04-12: Updated changelog hook to write Unreleased bullets
 - 2026-04-12: Converted changelog to Keep a Changelog format
 - 2026-04-12: Workspace tabs now auto-name from the main query keyword phrase (first sentence + up to 5 tokens).

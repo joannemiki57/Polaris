@@ -304,15 +304,68 @@ export default function App() {
     });
   }, [activeWorkspaceId, workspaces]);
 
+  const layoutAnimRef = useRef<number>(0);
+
   useEffect(() => {
     if (!graph) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
-    setNodes(n);
+    const { nodes: targetNodes, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
     setEdges(e);
+
+    // Capture current positions for lerp animation
+    setNodes((prev) => {
+      const oldPos = new Map(prev.map((n) => [n.id, { ...n.position }]));
+      const hasOld = targetNodes.some((n) => oldPos.has(n.id));
+
+      if (!hasOld) {
+        // First render or full replacement — no animation
+        return targetNodes;
+      }
+
+      // Cancel any running animation
+      cancelAnimationFrame(layoutAnimRef.current);
+
+      // Start nodes at their old positions (or new position if they're new)
+      const startNodes = targetNodes.map((n) => ({
+        ...n,
+        position: oldPos.get(n.id) ?? n.position,
+      }));
+
+      const duration = 500;
+      const t0 = performance.now();
+
+      const animate = () => {
+        const elapsed = performance.now() - t0;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        setNodes(
+          targetNodes.map((target) => {
+            const start = oldPos.get(target.id) ?? target.position;
+            return {
+              ...target,
+              position: {
+                x: start.x + (target.position.x - start.x) * ease,
+                y: start.y + (target.position.y - start.y) * ease,
+              },
+            };
+          }),
+        );
+
+        if (progress < 1) {
+          layoutAnimRef.current = requestAnimationFrame(animate);
+        }
+      };
+
+      layoutAnimRef.current = requestAnimationFrame(animate);
+      return startNodes;
+    });
+
+    return () => cancelAnimationFrame(layoutAnimRef.current);
   }, [graph, layoutMode, edgeLineMode, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
