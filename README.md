@@ -429,6 +429,8 @@ Requires an optional `S2_API_KEY` for higher rate limits. Works without a key at
 
 All LLM calls produce structured JSON (via `responseMimeType: "application/json"`) or markdown, parsed and validated before returning to the client. Temperature ranges from 0.2 (keyword extraction) to 0.5 (deep answers) depending on the task.
 
+When `GEMINI_MODEL` is temporarily unavailable due to demand spikes (for example 503/high-demand responses), the server automatically retries with fallback models. By default it falls back to `gemini-2.5-pro`.
+
 ---
 
 ## Client architecture
@@ -574,6 +576,7 @@ npm run session:changelog -- 2026-04-12 "feature 1" "feature 2"
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes (for LLM features) | Google Gemini API key |
 | `GEMINI_MODEL` | No (default: `gemini-2.5-flash`) | Gemini model name |
+| `GEMINI_FALLBACK_MODELS` | No | Comma-separated fallback model list used when the primary model is unavailable (default includes `gemini-2.5-pro`) |
 | `OPENALEX_MAILTO` | Recommended | Email for OpenAlex polite pool access |
 | `S2_API_KEY` | No | Semantic Scholar API key for higher rate limits |
 | `PORT` | No (default: `8787`) | Server port |

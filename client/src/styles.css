@@ -31,6 +31,70 @@ a {
   gap: 12px;
 }
 
+.navbar-settings {
+  position: relative;
+}
+
+.navbar-settings-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #2b2b2f;
+  background: #161619;
+  color: #a5b4c7;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.navbar-settings-btn:hover {
+  color: #ffd369;
+  border-color: rgba(255, 211, 105, 0.45);
+  background: #1d1d21;
+}
+
+.navbar-settings-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 120;
+  width: 230px;
+  border: 1px solid #2e2e32;
+  border-radius: 10px;
+  background: #131316;
+  padding: 10px;
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.4),
+    0 18px 34px rgba(0, 0, 0, 0.5);
+}
+
+.navbar-settings-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
+.navbar-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #e2e8f0;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+.navbar-settings-option input {
+  margin: 0;
+}
+
+.navbar-settings-divider {
+  border: 0;
+  border-top: 1px solid #2a2a2f;
+  margin: 8px 0;
+}
+
 .workspace-tabs {
   display: flex;
   align-items: center;
@@ -162,6 +226,12 @@ a {
   gap: 8px;
 }
 
+.selection-action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .sidebar button {
   padding: 8px 12px;
   border-radius: 8px;
@@ -198,6 +268,24 @@ a {
 
 .panel-head h3 {
   margin: 0;
+}
+
+.selection-clear-btn {
+  width: auto !important;
+  min-width: 92px;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid #2b2b2f !important;
+  background: #161619 !important;
+  color: #a5b4c7 !important;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.selection-clear-btn:hover:not(:disabled) {
+  color: #ffd369 !important;
+  border-color: rgba(255, 211, 105, 0.45) !important;
+  background: #1d1d21 !important;
 }
 
 .session-settings {
@@ -482,6 +570,11 @@ a {
   transition: bottom 0.18s ease;
 }
 
+.canvas-wrap-cmdbar-top .floating-cmdbar {
+  top: max(10px, env(safe-area-inset-top));
+  bottom: auto;
+}
+
 .flow {
   flex: 1;
   min-height: 0;
@@ -493,6 +586,10 @@ a {
   bottom: calc(var(--cmdbar-bottom) + var(--cmdbar-height) + 10px);
   z-index: 60;
   transition: bottom 0.18s ease;
+}
+
+.canvas-wrap-cmdbar-top .flow .react-flow__controls {
+  bottom: 14px;
 }
 
 @media (max-height: 900px) {
@@ -528,6 +625,10 @@ a {
     font-size: 12px;
     border-radius: 8px;
   }
+
+  .canvas-wrap-cmdbar-top .floating-cmdbar {
+    top: max(8px, env(safe-area-inset-top));
+  }
 }
 
 @media (max-height: 680px) {
@@ -550,6 +651,10 @@ a {
     height: 20px;
     font-size: 15px;
   }
+
+  .canvas-wrap-cmdbar-top .floating-cmdbar {
+    top: max(6px, env(safe-area-inset-top));
+  }
 }
 
 .md {
@@ -567,16 +672,56 @@ a {
 /* ── Mind Graph Nodes (Figma style) ── */
 
 .mn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   text-align: center;
-  transition: filter 0.2s;
+  transition:
+    filter 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .mn-selected {
-  filter: drop-shadow(0 0 10px rgba(255, 211, 105, 0.6));
+  filter:
+    drop-shadow(0 0 18px rgba(255, 211, 105, 0.86))
+    drop-shadow(0 0 34px rgba(255, 211, 105, 0.52));
+}
+
+.mn-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  transform: scale(1);
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mn-selected .mn-glyph {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 24px rgba(255, 211, 105, 0.76));
+}
+
+.mn-icon,
+.mn-dot,
+.mn-label {
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    text-shadow 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mn-selected .mn-label {
+  color: #ffe291;
+  text-shadow: 0 0 14px rgba(255, 211, 105, 0.62);
+}
+
+.mn-selected .mn-dot {
+  box-shadow: 0 0 18px rgba(255, 211, 105, 0.82);
 }
 
 .mn:hover {
@@ -1329,5 +1474,198 @@ a {
   }
   .da-chat {
     overflow: hidden;
+  }
+}
+
+/* ══════════════════════════════════════════
+   Constellation Loader — shimmer animation
+   ══════════════════════════════════════════ */
+
+.cl-container {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 120px;
+  background: #09090b;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.6s ease-out;
+}
+
+.cl-container-exit {
+  opacity: 0;
+}
+
+.cl-svg {
+  width: min(70vw, 600px);
+  height: min(70vh, 600px);
+}
+
+/* ── Edges ── */
+
+.cl-edge {
+  stroke: rgba(255, 211, 105, 0.08);
+  stroke-width: 0.18;
+  stroke-linecap: round;
+  opacity: 0;
+}
+
+.cl-edge-visible {
+  animation: cl-edge-draw 1.6s ease-out forwards;
+}
+
+@keyframes cl-edge-draw {
+  0% {
+    opacity: 0;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+  }
+  50% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 1;
+    stroke: rgba(255, 211, 105, 0.22);
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Stars ── */
+
+.cl-star {
+  fill: #ffd369;
+  opacity: 0;
+  transform-origin: center;
+}
+
+.cl-star-visible {
+  animation: cl-star-appear 1.2s ease-out forwards;
+}
+
+.cl-star-t0 {
+  fill: #ffd369;
+}
+
+.cl-star-t1 {
+  fill: #ffd369;
+}
+
+.cl-star-t2 {
+  fill: rgba(255, 211, 105, 0.65);
+}
+
+@keyframes cl-star-appear {
+  0% {
+    opacity: 0;
+    r: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ── Center ring pulse ── */
+
+.cl-center-ring {
+  fill: none;
+  stroke: rgba(255, 211, 105, 0.18);
+  stroke-width: 0.3;
+  animation: cl-ring-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes cl-ring-pulse {
+  0%, 100% {
+    r: 4;
+    opacity: 0.3;
+  }
+  50% {
+    r: 6.5;
+    opacity: 0.06;
+  }
+}
+
+/* ── Twinkle ── */
+
+.cl-twinkle {
+  fill: #fff;
+  opacity: 0;
+  animation: cl-twinkle 3s ease-in-out infinite;
+}
+
+@keyframes cl-twinkle {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+/* ── Status area ── */
+
+.cl-status {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.cl-status-text {
+  color: rgba(255, 211, 105, 0.7);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0 0 10px;
+  animation: cl-status-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes cl-status-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Bouncing dots ── */
+
+.cl-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.cl-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffd369;
+  opacity: 0.3;
+  animation: cl-dot-bounce 1.6s ease-in-out infinite;
+}
+
+.cl-dot:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.cl-dot:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+@keyframes cl-dot-bounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.3);
   }
 }
