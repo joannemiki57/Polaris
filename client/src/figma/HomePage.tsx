@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface Props {
   onContinue: () => void;
@@ -6,6 +6,8 @@ interface Props {
 
 export function HomePage({ onContinue }: Props) {
   const doneRef = useRef(false);
+  const [logoSrc, setLogoSrc] = useState("/assets/polaris-logo.svg");
+  const [showLogo, setShowLogo] = useState(true);
 
   const finish = () => {
     if (doneRef.current) return;
@@ -26,6 +28,22 @@ export function HomePage({ onContinue }: Props) {
 
       <div className="fg-home-bg">
         <div className="fg-splash-copy">
+          {showLogo && (
+            <div className="fg-home-logo-wrap">
+              <img
+                className="fg-home-logo"
+                src={logoSrc}
+                alt="Polaris logo"
+                onError={() => {
+                  if (logoSrc.endsWith(".svg")) {
+                    setLogoSrc("/assets/polaris-logo.png");
+                    return;
+                  }
+                  setShowLogo(false);
+                }}
+              />
+            </div>
+          )}
           <p className="fg-splash-eyebrow">Research exploration</p>
           <h1 className="fg-title">Polaris</h1>
           <p className="fg-tagline">

@@ -31,6 +31,70 @@ a {
   gap: 12px;
 }
 
+.navbar-settings {
+  position: relative;
+}
+
+.navbar-settings-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #2b2b2f;
+  background: #161619;
+  color: #a5b4c7;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.navbar-settings-btn:hover {
+  color: #ffd369;
+  border-color: rgba(255, 211, 105, 0.45);
+  background: #1d1d21;
+}
+
+.navbar-settings-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 120;
+  width: 230px;
+  border: 1px solid #2e2e32;
+  border-radius: 10px;
+  background: #131316;
+  padding: 10px;
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.4),
+    0 18px 34px rgba(0, 0, 0, 0.5);
+}
+
+.navbar-settings-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
+.navbar-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #e2e8f0;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+.navbar-settings-option input {
+  margin: 0;
+}
+
+.navbar-settings-divider {
+  border: 0;
+  border-top: 1px solid #2a2a2f;
+  margin: 8px 0;
+}
+
 .workspace-tabs {
   display: flex;
   align-items: center;
@@ -482,6 +546,11 @@ a {
   transition: bottom 0.18s ease;
 }
 
+.canvas-wrap-cmdbar-top .floating-cmdbar {
+  top: max(10px, env(safe-area-inset-top));
+  bottom: auto;
+}
+
 .flow {
   flex: 1;
   min-height: 0;
@@ -493,6 +562,10 @@ a {
   bottom: calc(var(--cmdbar-bottom) + var(--cmdbar-height) + 10px);
   z-index: 60;
   transition: bottom 0.18s ease;
+}
+
+.canvas-wrap-cmdbar-top .flow .react-flow__controls {
+  bottom: 14px;
 }
 
 @media (max-height: 900px) {
@@ -528,6 +601,10 @@ a {
     font-size: 12px;
     border-radius: 8px;
   }
+
+  .canvas-wrap-cmdbar-top .floating-cmdbar {
+    top: max(8px, env(safe-area-inset-top));
+  }
 }
 
 @media (max-height: 680px) {
@@ -549,6 +626,10 @@ a {
     width: 20px;
     height: 20px;
     font-size: 15px;
+  }
+
+  .canvas-wrap-cmdbar-top .floating-cmdbar {
+    top: max(6px, env(safe-area-inset-top));
   }
 }
 

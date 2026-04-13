@@ -17,6 +17,13 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 - 2026-04-12: Opening a recent session now reuses an existing matching workspace tab instead of creating duplicate tabs.
 - 2026-04-12: Added PNG export settings (gear icon in Session panel) with scope toggle: Full graph vs Visible area.
 - 2026-04-12: Added Recent sessions delete mode (trash toggle + per-session X button) for direct history cleanup from the sidebar.
+- 2026-04-12: Added top-right personal settings to choose search command bar position (fixed bottom default or fixed top), with local preference persistence.
+- 2026-04-12: Added landing-page logo slot with graceful asset fallback (`/assets/polaris-logo.svg` then `/assets/polaris-logo.png`).
+- 2026-04-12: Added top-right personal preference for graph connection lines: diagonal straight or parallel straight (persisted locally).
+- 2026-04-12: Improved parallel line mode to align sibling/grandchild connectors on a shared elbow axis instead of independent per-edge offsets.
+- 2026-04-12: Updated tree layout to parent-centered hierarchical spacing so parent and grandchild levels align more consistently in parallel mode; parallel line color/width is now unified.
+- 2026-04-12: Parallel line mode now uses an opaque single-tone stroke to prevent darker-looking overlaps when segments stack.
+- 2026-04-12: Tree+parallel mode now anchors parent connectors using child median alignment (odd child counts connect to exact middle child) and renders primary tree edges for cleaner right-side branching.
 
 ### Changed
 

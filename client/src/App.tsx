@@ -31,8 +31,9 @@ import { DeepAnswerPage } from "./DeepAnswerPage";
 import { HomePage } from "./figma/HomePage";
 import "./figma/figma-styles.css";
 import type { GraphNode, MindGraph } from "./graphTypes";
-import { mindGraphToFlow, type LayoutMode } from "./layout";
+import { mindGraphToFlow, type EdgeLineMode, type LayoutMode } from "./layout";
 import { MindNode } from "./MindNode";
+import { ParallelStraightEdge } from "./ParallelStraightEdge";
 import {
   archiveSession,
   clearSession,
@@ -51,6 +52,9 @@ import {
 } from "./persistence";
 
 const nodeTypes = { mind: MindNode };
+const edgeTypes = { parallelStraight: ParallelStraightEdge };
+const CMD_BAR_ANCHOR_KEY = "mindgraph_cmdbar_anchor_v1";
+const EDGE_LINE_MODE_KEY = "mindgraph_edge_line_mode_v1";
 
 function graphNodeById(g: MindGraph, id: string): GraphNode | undefined {
   return g.nodes.find((n) => n.id === id);
@@ -129,6 +133,9 @@ function getWorkspaceDisplayName(name: string, question: string): string {
 export default function App() {
   const [pngExportMode, setPngExportMode] = useState<"full" | "visible">("full");
   const [showPngExportSettings, setShowPngExportSettings] = useState(false);
+  const [cmdbarAnchor, setCmdbarAnchor] = useState<"bottom" | "top">("bottom");
+  const [edgeLineMode, setEdgeLineMode] = useState<EdgeLineMode>("diagonal");
+  const [showCmdbarSettings, setShowCmdbarSettings] = useState(false);
   const [recentDeleteMode, setRecentDeleteMode] = useState(false);
   const [question, setQuestion] = useState("");
   const [graph, setGraph] = useState<MindGraph | null>(null);
@@ -154,6 +161,31 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const flowRef = useRef<HTMLDivElement | null>(null);
   const pngExportSettingsRef = useRef<HTMLDivElement | null>(null);
+  const cmdbarSettingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(CMD_BAR_ANCHOR_KEY);
+      if (stored === "top" || stored === "bottom") {
+        setCmdbarAnchor(stored);
+      }
+      const storedLine = localStorage.getItem(EDGE_LINE_MODE_KEY);
+      if (storedLine === "diagonal" || storedLine === "parallel") {
+        setEdgeLineMode(storedLine);
+      }
+    } catch {
+      // Keep default bottom on storage failures.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CMD_BAR_ANCHOR_KEY, cmdbarAnchor);
+      localStorage.setItem(EDGE_LINE_MODE_KEY, edgeLineMode);
+    } catch {
+      // Ignore localStorage quota/privacy mode errors.
+    }
+  }, [cmdbarAnchor, edgeLineMode]);
 
   useEffect(() => {
     if (!showPngExportSettings) return;
@@ -170,6 +202,22 @@ export default function App() {
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [showPngExportSettings]);
+
+  useEffect(() => {
+    if (!showCmdbarSettings) return;
+
+    const onPointerDown = (evt: PointerEvent) => {
+      const target = evt.target as globalThis.Node | null;
+      if (!target || !cmdbarSettingsRef.current?.contains(target)) {
+        setShowCmdbarSettings(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [showCmdbarSettings]);
 
   useEffect(() => {
     health()
@@ -244,10 +292,10 @@ export default function App() {
       setEdges([]);
       return;
     }
-    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode);
+    const { nodes: n, edges: e } = mindGraphToFlow(graph, layoutMode, edgeLineMode);
     setNodes(n);
     setEdges(e);
-  }, [graph, layoutMode, setEdges, setNodes]);
+  }, [graph, layoutMode, edgeLineMode, setEdges, setNodes]);
 
   const selectedNodes = useMemo(() => {
     if (!graph) return [];
@@ -744,6 +792,65 @@ export default function App() {
           </button>
         </div>
         <div className="navbar-right">
+          <div className="navbar-settings" ref={cmdbarSettingsRef}>
+            <button
+              type="button"
+              className="navbar-settings-btn"
+              onClick={() => setShowCmdbarSettings((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={showCmdbarSettings}
+              title="Personal settings"
+            >
+              ⚙
+            </button>
+            {showCmdbarSettings && (
+              <div className="navbar-settings-popover" role="menu" aria-label="Personal settings">
+                <p className="navbar-settings-title">Search bar position</p>
+                <label className="navbar-settings-option">
+                  <input
+                    type="radio"
+                    name="cmdbar-anchor"
+                    value="bottom"
+                    checked={cmdbarAnchor === "bottom"}
+                    onChange={() => setCmdbarAnchor("bottom")}
+                  />
+                  Fixed at bottom (default)
+                </label>
+                <label className="navbar-settings-option">
+                  <input
+                    type="radio"
+                    name="cmdbar-anchor"
+                    value="top"
+                    checked={cmdbarAnchor === "top"}
+                    onChange={() => setCmdbarAnchor("top")}
+                  />
+                  Fixed at top
+                </label>
+                <hr className="navbar-settings-divider" />
+                <p className="navbar-settings-title">Connection lines</p>
+                <label className="navbar-settings-option">
+                  <input
+                    type="radio"
+                    name="edge-line-mode"
+                    value="diagonal"
+                    checked={edgeLineMode === "diagonal"}
+                    onChange={() => setEdgeLineMode("diagonal")}
+                  />
+                  Diagonal straight
+                </label>
+                <label className="navbar-settings-option">
+                  <input
+                    type="radio"
+                    name="edge-line-mode"
+                    value="parallel"
+                    checked={edgeLineMode === "parallel"}
+                    onChange={() => setEdgeLineMode("parallel")}
+                  />
+                  Parallel straight
+                </label>
+              </div>
+            )}
+          </div>
           {apiHealth && (
             <span className="navbar-health">
               LLM: {apiHealth.llm ? "on" : "mock"} · OpenAlex:{" "}
@@ -945,7 +1052,7 @@ export default function App() {
           {status && <p className="status">{status}</p>}
         </aside>
 
-        <section className="canvas-wrap">
+        <section className={`canvas-wrap${cmdbarAnchor === "top" ? " canvas-wrap-cmdbar-top" : ""}`}>
           {/* Graph canvas */}
           <div className="flow" ref={flowRef}>
             {/* Floating command bar */}
@@ -988,6 +1095,7 @@ export default function App() {
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               fitView
               minZoom={0.2}
               maxZoom={1.5}
