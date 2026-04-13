@@ -314,9 +314,10 @@ export async function organizeKeywordsToGraph(
 ): Promise<MindGraph> {
   function formatPaper(p: PaperWithKeywords): string {
     const topics = p.topics
+      .slice(0, 5)
       .map((t) => `${t.displayName} [${t.subfield}] (${(t.score * 100).toFixed(0)}%)`)
       .join(", ");
-    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 400)}` : "";
+    const abs = p.abstract ? `\n  Abstract: ${p.abstract.slice(0, 200)}` : "";
     return `- "${p.title}" [${p.citedByCount} citations]\n  Topics: ${topics || "(none)"}${abs}`;
   }
 

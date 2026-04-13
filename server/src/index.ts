@@ -46,6 +46,9 @@ app.use(compression());
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
 
+const GRAPH_CACHE_TTL = 1000 * 60 * 60 * 24; // 24h
+const graphResultCache = new Map<string, { at: number; graph: MindGraph }>();
+
 // Serve React build in production
 const candidatePaths = [
   path.join(__dirname, "public"),
@@ -93,29 +96,30 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       return;
     }
 
-    // Hybrid pipeline: fetch real papers, then let LLM organize their topics+abstracts
+    const graphCacheKey = `graph:${question.trim().toLowerCase()}`;
+    const cached = graphResultCache.get(graphCacheKey);
+    if (cached && Date.now() - cached.at < GRAPH_CACHE_TTL) {
+      res.json({ graph: cached.graph });
+      return;
+    }
+
+    // Single-pass: search returns topics + abstracts directly (no separate fetchWorkDetail needed)
     const [reviews, articles] = await Promise.all([
-      searchWorks(question, OPENALEX_MAILTO, 2, "review"),
-      searchWorks(question, OPENALEX_MAILTO, 6, "article"),
+      searchWorks(question, OPENALEX_MAILTO, 2, "review", true),
+      searchWorks(question, OPENALEX_MAILTO, 6, "article", true),
     ]);
     const allHits = [...reviews, ...articles];
 
-    // Fetch topics + abstracts for each paper in parallel
-    const papersWithKeywords: PaperWithKeywords[] = await Promise.all(
-      allHits.map(async (h) => {
-        const detail = await fetchWorkDetail(h.id, OPENALEX_MAILTO);
-        return {
-          id: h.id,
-          title: h.title ?? "Untitled",
-          isReview: h.type === "review",
-          citedByCount: h.cited_by_count ?? 0,
-          topics: detail.topics.map((t) => ({
-            displayName: t.displayName, score: t.score, subfield: t.subfield,
-          })),
-          abstract: detail.abstract,
-        };
-      }),
-    );
+    const papersWithKeywords: PaperWithKeywords[] = allHits.map((h) => ({
+      id: h.id,
+      title: h.title ?? "Untitled",
+      isReview: h.type === "review",
+      citedByCount: h.cited_by_count ?? 0,
+      topics: h.topics.slice(0, 5).map((t) => ({
+        displayName: t.displayName, score: t.score, subfield: t.subfield,
+      })),
+      abstract: h.abstract,
+    }));
 
     // LLM organizes topics + abstracts into a tree (or fallback to pure LLM if no key)
     let keywordGraph: MindGraph;
@@ -127,6 +131,7 @@ app.post("/api/graph/expand", apiLimiter, async (req, res) => {
       keywordGraph = await expandQuestionToGraph(GEMINI_KEY, question, GEMINI_MODEL);
     }
 
+    graphResultCache.set(graphCacheKey, { at: Date.now(), graph: keywordGraph });
     res.json({ graph: keywordGraph });
   } catch (e) {
     console.error(e);

@@ -13,6 +13,12 @@ export interface OpenAlexWorkHit {
   type: string | null;
 }
 
+export interface OpenAlexWorkHitEnriched extends OpenAlexWorkHit {
+  topics: OpenAlexTopic[];
+  keywords: OpenAlexKeyword[];
+  abstract: string | null;
+}
+
 export interface OpenAlexKeyword {
   id: string;
   displayName: string;
@@ -35,9 +41,11 @@ export interface WorkDetail {
 
 interface CacheEntry {
   at: number;
-  hits?: OpenAlexWorkHit[];
+  hits?: OpenAlexWorkHit[] | OpenAlexWorkHitEnriched[];
   keywords?: OpenAlexKeyword[];
   detail?: WorkDetail;
+  researchPapers?: OpenAlexWorkDetailed[];
+  sections?: import("./semanticScholar.js").PaperSection[];
 }
 
 const TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -86,9 +94,25 @@ export async function searchWorks(
   mailto: string | undefined,
   perPage = 8,
   typeFilter?: "review" | "article",
-): Promise<OpenAlexWorkHit[]> {
+  enriched?: false,
+): Promise<OpenAlexWorkHit[]>;
+export async function searchWorks(
+  query: string,
+  mailto: string | undefined,
+  perPage: number,
+  typeFilter: "review" | "article" | undefined,
+  enriched: true,
+): Promise<OpenAlexWorkHitEnriched[]>;
+export async function searchWorks(
+  query: string,
+  mailto: string | undefined,
+  perPage = 8,
+  typeFilter?: "review" | "article",
+  enriched = false,
+): Promise<OpenAlexWorkHit[] | OpenAlexWorkHitEnriched[]> {
   const filterSuffix = typeFilter ? `:${typeFilter}` : "";
-  const cacheKey = `${query.trim().toLowerCase()}${filterSuffix}`;
+  const enrichTag = enriched ? ":enriched" : "";
+  const cacheKey = `${query.trim().toLowerCase()}${filterSuffix}${enrichTag}`;
   if (!cacheKey) return [];
 
   const cache = getCache();
@@ -120,9 +144,48 @@ export async function searchWorks(
       cited_by_count: number | null;
       doi: string | null;
       type: string | null;
+      topics?: Array<{
+        id: string;
+        display_name: string;
+        score: number;
+        subfield?: { display_name?: string };
+        field?: { display_name?: string };
+      }>;
+      keywords?: Array<{ id: string; display_name: string; score: number }>;
+      abstract_inverted_index?: Record<string, number[]> | null;
     }>;
   };
   const results = json.results ?? [];
+
+  if (enriched) {
+    const hits: OpenAlexWorkHitEnriched[] = results.map((r) => ({
+      id: r.id,
+      title: r.title,
+      publication_year: r.publication_year,
+      cited_by_count: r.cited_by_count,
+      doi: r.doi,
+      type: r.type,
+      topics: (r.topics ?? [])
+        .map((t) => ({
+          id: t.id,
+          displayName: t.display_name,
+          score: t.score,
+          subfield: t.subfield?.display_name ?? "",
+          field: t.field?.display_name ?? "",
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_TOPICS),
+      keywords: (r.keywords ?? [])
+        .map((k) => ({ id: k.id, displayName: k.display_name, score: k.score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_KEYWORDS),
+      abstract: reconstructAbstract(r.abstract_inverted_index ?? null),
+    }));
+    cache.set(cacheKey, { at: Date.now(), hits });
+    saveDiskCache(cache);
+    return hits;
+  }
+
   const hits: OpenAlexWorkHit[] = results.map((r) => ({
     id: r.id,
     title: r.title,
@@ -162,6 +225,11 @@ export async function searchResearchPapers(
   const q = query.trim();
   if (!q) return [];
 
+  const cacheKey = `research:${q.toLowerCase()}:${page}:${perPage}`;
+  const cache = getCache();
+  const cached = cache.get(cacheKey);
+  if (cached?.researchPapers && Date.now() - cached.at < TTL_MS) return cached.researchPapers;
+
   const params = new URLSearchParams({
     search: query,
     per_page: String(perPage),
@@ -191,7 +259,7 @@ export async function searchResearchPapers(
       authorships?: Array<{ author?: { display_name?: string } }>;
     }>;
   };
-  return (json.results ?? []).map((r) => ({
+  const papers = (json.results ?? []).map((r) => ({
     id: r.id,
     title: r.title,
     publication_year: r.publication_year,
@@ -204,6 +272,9 @@ export async function searchResearchPapers(
       .filter((n): n is string => Boolean(n))
       .slice(0, 5),
   }));
+  cache.set(cacheKey, { at: Date.now(), researchPapers: papers });
+  saveDiskCache(cache);
+  return papers;
 }
 
 export function workHitToPaperNodes(

@@ -34,11 +34,18 @@ export interface PaperSection {
  * Searches by paper title, then filters snippets matching the target paper's corpusId.
  * Falls back to title matching if corpusId is unknown.
  */
+const S2_CACHE_TTL = 1000 * 60 * 60 * 24;
+const s2Cache = new Map<string, { at: number; sections: PaperSection[] }>();
+
 export async function fetchPaperSections(
   paperTitle: string,
   semanticScholarId?: string,
   apiKey?: string,
 ): Promise<PaperSection[]> {
+  const cacheKey = `s2:${paperTitle.toLowerCase().trim()}`;
+  const cached = s2Cache.get(cacheKey);
+  if (cached && Date.now() - cached.at < S2_CACHE_TTL) return cached.sections;
+
   const headers: Record<string, string> = {};
   if (apiKey) headers["x-api-key"] = apiKey;
 
@@ -64,14 +71,12 @@ export async function fetchPaperSections(
 
   const data = json.data ?? [];
 
-  // Filter to snippets from our target paper
   const targetTitle = paperTitle.toLowerCase().trim();
   const matching = data.filter((d) => {
     if (semanticScholarId) return d.paper.corpusId === semanticScholarId;
     return d.paper.title.toLowerCase().trim() === targetTitle;
   });
 
-  // Collect unique section names, counting how many snippets per section
   const sectionCounts = new Map<string, number>();
   for (const d of matching) {
     const section = d.snippet.section?.trim();
@@ -85,7 +90,9 @@ export async function fetchPaperSections(
     sections.push({ name, snippetCount });
   }
 
-  return sections.sort((a, b) => b.snippetCount - a.snippetCount);
+  const result = sections.sort((a, b) => b.snippetCount - a.snippetCount);
+  s2Cache.set(cacheKey, { at: Date.now(), sections: result });
+  return result;
 }
 
 /**
