@@ -904,19 +904,35 @@ a {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 20px;
-  border-bottom: 1px solid #1c1c1e;
-  background: #111113;
+  padding: 0 20px;
+  min-height: 48px;
+  border-bottom: 1px solid #27272a;
+  background: rgba(9, 9, 11, 0.85);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
+/* Ghost control — matches main app navbar / text actions, not a filled “chip” */
 .da-back {
-  padding: 6px 14px !important;
+  font-family: "Inter", system-ui, sans-serif;
   font-size: 13px;
-  border-radius: 6px;
+  font-weight: 500;
+  letter-spacing: -0.12px;
+  color: #a1a1aa !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px;
+  padding: 6px 12px !important;
+  cursor: pointer;
   white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.da-back:hover {
+  color: #ffd369 !important;
+  background: rgba(255, 211, 105, 0.08) !important;
+  border-color: rgba(255, 211, 105, 0.22) !important;
 }
 
 .da-breadcrumb {
@@ -1068,6 +1084,7 @@ a {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -1244,11 +1261,14 @@ a {
 
 .da-messages {
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .da-system-msg {
@@ -1393,39 +1413,60 @@ a {
 /* ── Input bar ── */
 
 .da-input-bar {
+  flex-shrink: 0;
   display: flex;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid #1c1c1e;
-  background: #111113;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #27272a;
+  background: rgba(9, 9, 11, 0.92);
 }
 
 .da-input {
   flex: 1;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid #27272a;
-  background: #0a0a0a;
-  color: #e2e8f0;
+  min-height: 40px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid #3f3f46;
+  background: #141414;
+  color: #eee;
   font-size: 14px;
+  letter-spacing: -0.15px;
   resize: none;
-  font-family: inherit;
+  font-family: "Inter", system-ui, sans-serif;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.12);
+}
+.da-input::placeholder {
+  color: #6b7280;
 }
 .da-input:focus {
   outline: none;
-  border-color: #ffd369;
+  border-color: #52525b;
+  box-shadow: 0 0 0 1px rgba(255, 211, 105, 0.15), 0 4px 6px rgba(0, 0, 0, 0.12);
 }
 
+/* Same language as graph command bar submit (fg-cmdbar-submit) */
 .da-send {
-  padding: 10px 20px !important;
-  background: #ffd369 !important;
-  border-color: #e6b84d !important;
-  color: #222831 !important;
+  flex-shrink: 0;
+  font-family: "Inter", system-ui, sans-serif;
   font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.15px;
+  padding: 6px 20px !important;
+  height: 40px;
+  background: #ffd369 !important;
+  border: none !important;
   border-radius: 10px;
+  color: #222831 !important;
+  cursor: pointer;
+  white-space: nowrap;
 }
 .da-send:hover:not(:disabled) {
   background: #ffe08a !important;
+}
+.da-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── Paper star button (local favorite only) ── */

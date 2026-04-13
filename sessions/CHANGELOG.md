@@ -17,6 +17,8 @@ Entries under **[Unreleased]** are grouped **by session** (topic in the `###` he
 ### 2026-04-13 — Deep Answer
 
 - “Load more papers”: **+** control in the **Source Papers** sidebar header (squircle + right-anchored popover).
+- Chat transcript area is **scrollable** (message list no longer `overflow: hidden`); short static input placeholder.
+- **Back** / **Send** / composer field aligned with graph **command bar** tokens (ghost back, `fg-cmdbar`-style submit + input).
 
 ### 2026-04-13 — Multi-select & workspace UI
 

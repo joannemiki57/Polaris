@@ -500,11 +500,7 @@ export function DeepAnswerPage({
           <div className="da-input-bar">
             <textarea
               className="da-input"
-              placeholder={
-                loading
-                  ? "Loading papers..."
-                  : `Ask about "${searchKeyword}" — answers grounded in ${papers.length} papers`
-              }
+              placeholder={loading ? "Loading papers…" : "Ask a question…"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKey}
