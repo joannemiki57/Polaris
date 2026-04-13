@@ -102,14 +102,22 @@ export function ConstellationLoader({
         preserveAspectRatio="xMidYMid meet"
       >
         <defs>
-          {/* Glow filter for stars */}
-          <filter id="cl-glow">
-            <feGaussianBlur stdDeviation="0.6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
+          {/* Radial gradient fills — glow stays inside the circle */}
+          <radialGradient id="cl-grad-t0">
+            <stop offset="0%" stopColor="#fff" stopOpacity="1" />
+            <stop offset="35%" stopColor="#ffe9a0" stopOpacity="0.95" />
+            <stop offset="70%" stopColor="#ffd369" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#d4a84a" stopOpacity="0.7" />
+          </radialGradient>
+          <radialGradient id="cl-grad-t1">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.9" />
+            <stop offset="40%" stopColor="#ffd369" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#c9993a" stopOpacity="0.6" />
+          </radialGradient>
+          <radialGradient id="cl-grad-t2">
+            <stop offset="0%" stopColor="#ffe9a0" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#b8882e" stopOpacity="0.4" />
+          </radialGradient>
         </defs>
 
         {/* Edges */}
@@ -157,7 +165,7 @@ export function ConstellationLoader({
                 cy={star.y}
                 r={star.size}
                 className={`cl-star cl-star-t${star.tier} ${starVisible ? "cl-star-visible" : ""}`}
-                filter="url(#cl-glow)"
+                fill={`url(#cl-grad-t${star.tier})`}
                 style={{
                   animationDelay: `${star.tier === 0 ? 0 : star.tier === 1 ? 1000 + i * 300 : 4000 + i * 200}ms`,
                 }}

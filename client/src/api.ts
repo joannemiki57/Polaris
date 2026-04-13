@@ -15,6 +15,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 export async function health(): Promise<{
   ok: boolean;
   llm: boolean;
+  openai?: boolean;
   openAlexMailto: boolean;
 }> {
   return j("/api/health");

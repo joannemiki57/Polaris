@@ -1538,25 +1538,12 @@ a {
 /* ── Stars ── */
 
 .cl-star {
-  fill: #ffd369;
   opacity: 0;
   transform-origin: center;
 }
 
 .cl-star-visible {
   animation: cl-star-appear 1.2s ease-out forwards;
-}
-
-.cl-star-t0 {
-  fill: #ffd369;
-}
-
-.cl-star-t1 {
-  fill: #ffd369;
-}
-
-.cl-star-t2 {
-  fill: rgba(255, 211, 105, 0.65);
 }
 
 @keyframes cl-star-appear {

@@ -147,6 +147,7 @@ export default function App() {
   const [showLoaderByWorkspace, setShowLoaderByWorkspace] = useState<Record<string, boolean>>({});
   const [apiHealth, setApiHealth] = useState<{
     llm: boolean;
+    openai?: boolean;
     openAlexMailto: boolean;
   } | null>(null);
   const [deepPageKeyword, setDeepPageKeyword] = useState<string | null>(null);
@@ -324,7 +325,13 @@ export default function App() {
 
   useEffect(() => {
     health()
-      .then((h) => setApiHealth({ llm: h.llm, openAlexMailto: h.openAlexMailto }))
+      .then((h) =>
+        setApiHealth({
+          llm: h.llm,
+          openai: h.openai,
+          openAlexMailto: h.openAlexMailto,
+        }),
+      )
       .catch(() => setApiHealth(null));
   }, []);
 
@@ -1130,7 +1137,8 @@ export default function App() {
           </div>
           {apiHealth && (
             <span className="navbar-health">
-              LLM: {apiHealth.llm ? "on" : "mock"} · OpenAlex:{" "}
+              LLM: {apiHealth.llm ? "on" : "mock"}
+              {apiHealth.openai ? " · OpenAI fb: on" : ""} · OpenAlex:{" "}
               {apiHealth.openAlexMailto ? "set" : "—"}
             </span>
           )}

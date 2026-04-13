@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 
 ### Added
 
+- 2026-04-13: LLM resilience: transient Gemini failures (e.g. 503 high demand) now fall through to OpenAI `gpt-4o-mini` when `OPENAI_API_KEY` is set, then to tertiary Gemini `GEMINI_TERTIARY_MODEL` (default `gemini-3-flash-preview`); `/api/health` exposes `openai` when the OpenAI key is configured.
 - 2026-04-13: Added in-canvas animated multi-select feedback for nodes (halo ring + core pulse) so Shift-selected nodes are visibly active in the graph itself.
 - 2026-04-13: Added reduced-motion fallback for selected-node glow animations (`prefers-reduced-motion`) to keep interaction feedback accessible.
 - 2026-04-13: Added a Selection-panel "Deselect all" button (right side of the Selection header) for one-click clearing of current node selections.
@@ -39,7 +40,7 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 - 2026-04-13: Multi-select glow now uses a single shared pulse offset per selection update, so all selected nodes stay in one unified animation phase rather than per-node timing instances.
 - 2026-04-13: Multi-select combined expansion now runs as a single merged request for selected nodes instead of paper-only per-node loops, and shows guidance that relevance may drop when 4+ nodes are selected.
 - 2026-04-13: Replaced circular selected-node pulse/ring animation with a stronger static glow treatment (glyph scale + brighter halo + label glow) for clearer multi-select visibility.
-- 2026-04-13: LLM pipeline now auto-retries with fallback Gemini models when the primary model returns transient capacity errors (e.g., 503/high-demand), reducing user-visible failures.
+- 2026-04-13: LLM pipeline now uses a fixed multi-provider fallback chain (primary Gemini → optional OpenAI → tertiary Gemini) instead of only swapping among extra Gemini model IDs via `GEMINI_FALLBACK_MODELS`.
 - 2026-04-13: Workspace tabs now isolate runtime loading/status containers, so generating a diagram in one tab no longer shows the loader overlay or operation state in other tabs.
 - 2026-04-13: Smoothed multi-select highlighting by applying node selection state immediately in click handlers (removed one-frame delayed effect-based sync), reducing visible step/lag when selecting multiple nodes.
 - 2026-04-13: Retuned selected-node highlight to restore larger visual emphasis and use a single slower easing curve (no staged jump), making multi-select expansion feel smoother.

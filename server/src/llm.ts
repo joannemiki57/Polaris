@@ -89,16 +89,41 @@ function getGemini(apiKey: string, model: string) {
   return genAI.getGenerativeModel({ model });
 }
 
-type GenerateContentInput = Parameters<ReturnType<typeof getGemini>["generateContent"]>[0];
+/** Shape we pass to `generateContent` everywhere in this module (structured chat + optional JSON mode). */
+type PolarisGenerateContentRequest = {
+  contents: Array<{
+    role: "user" | "model";
+    parts: { text: string }[];
+  }>;
+  generationConfig?: {
+    temperature?: number;
+    responseMimeType?: string;
+  };
+};
 
-const DEFAULT_FALLBACK_MODELS = ["gemini-2.5-pro"];
+type GeminiGenerateArg = Parameters<ReturnType<typeof getGemini>["generateContent"]>[0];
 
-function getFallbackModels(primaryModel: string): string[] {
-  const configured = (process.env.GEMINI_FALLBACK_MODELS ?? "")
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-  return [...new Set([...configured, ...DEFAULT_FALLBACK_MODELS])].filter((m) => m !== primaryModel);
+type LlmStep =
+  | { provider: "gemini"; model: string }
+  | { provider: "openai"; model: string };
+
+function buildLlmFallbackChain(primaryGeminiModel: string): LlmStep[] {
+  const openaiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  const openaiModel = (process.env.OPENAI_MODEL ?? "gpt-4o-mini").trim() || "gpt-4o-mini";
+  const tertiary =
+    (process.env.GEMINI_TERTIARY_MODEL ?? "gemini-3-flash-preview").trim() ||
+    "gemini-3-flash-preview";
+
+  const steps: LlmStep[] = [{ provider: "gemini", model: primaryGeminiModel }];
+  if (openaiKey) steps.push({ provider: "openai", model: openaiModel });
+  if (tertiary !== primaryGeminiModel) {
+    steps.push({ provider: "gemini", model: tertiary });
+  }
+  return steps;
+}
+
+function stepLabel(step: LlmStep): string {
+  return step.provider === "gemini" ? `gemini/${step.model}` : `openai/${step.model}`;
 }
 
 function getErrorStatus(err: unknown): number | undefined {
@@ -110,44 +135,107 @@ function getErrorStatus(err: unknown): number | undefined {
 
 function isCapacityOrTransientError(err: unknown): boolean {
   const status = getErrorStatus(err);
-  if (status === 503 || status === 429) return true;
+  if (status === 503 || status === 429 || status === 502) return true;
   const message = err instanceof Error ? err.message : String(err ?? "");
-  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|503|429)/i.test(message);
+  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|503|429|502|overloaded|timeout)/i.test(
+    message,
+  );
+}
+
+async function generateOpenAIChat(
+  apiKey: string,
+  model: string,
+  request: PolarisGenerateContentRequest,
+): Promise<string> {
+  const gen = request.generationConfig ?? {};
+  const temperature = typeof gen.temperature === "number" ? gen.temperature : 0.7;
+  const wantJson = gen.responseMimeType === "application/json";
+
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [];
+  if (wantJson) {
+    messages.push({
+      role: "system",
+      content:
+        "You must respond with only a single valid JSON object (no markdown fences, no commentary).",
+    });
+  }
+  for (const block of request.contents) {
+    const text = block.parts.map((p: { text: string }) => p.text).join("\n");
+    const role = block.role === "user" ? "user" : "assistant";
+    messages.push({ role, content: text });
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature,
+  };
+  if (wantJson) body.response_format = { type: "json_object" };
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    const err = new Error(`OpenAI ${res.status}: ${raw.slice(0, 400)}`);
+    Object.assign(err, { status: res.status });
+    throw err;
+  }
+  let json: { choices?: { message?: { content?: string | null } }[] };
+  try {
+    json = JSON.parse(raw) as { choices?: { message?: { content?: string | null } }[] };
+  } catch {
+    throw new Error("OpenAI: invalid JSON response");
+  }
+  const text = json.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error(`Empty OpenAI response from ${model}`);
+  return text;
 }
 
 async function generateTextWithFallback(
-  apiKey: string,
-  model: string,
-  request: GenerateContentInput,
+  geminiApiKey: string,
+  primaryModel: string,
+  request: PolarisGenerateContentRequest,
 ): Promise<string> {
-  const models = [model, ...getFallbackModels(model)];
+  const steps = buildLlmFallbackChain(primaryModel);
+  const openaiKey = (process.env.OPENAI_API_KEY ?? "").trim();
   let lastError: unknown;
 
-  for (let i = 0; i < models.length; i++) {
-    const currentModel = models[i]!;
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    const hasNext = i < steps.length - 1;
     try {
-      const gemini = getGemini(apiKey, currentModel);
-      const result = await gemini.generateContent(request);
-      const text = result.response.text();
-      if (!text) throw new Error(`Empty Gemini response from ${currentModel}`);
+      let text: string;
+      if (step.provider === "gemini") {
+        const gemini = getGemini(geminiApiKey, step.model);
+        const result = await gemini.generateContent(request as GeminiGenerateArg);
+        text = result.response.text() ?? "";
+        if (!text) throw new Error(`Empty Gemini response from ${step.model}`);
+      } else {
+        if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
+        text = await generateOpenAIChat(openaiKey, step.model, request);
+      }
       if (i > 0) {
-        console.warn(`[llm] fallback model used: ${currentModel} (primary: ${model})`);
+        console.warn(
+          `[llm] fallback succeeded: ${stepLabel(step)} (primary was ${stepLabel(steps[0]!)})`,
+        );
       }
       return text;
     } catch (err) {
       lastError = err;
-      const hasNextModel = i < models.length - 1;
-      if (!hasNextModel || !isCapacityOrTransientError(err)) {
-        throw err;
-      }
+      if (!hasNext || !isCapacityOrTransientError(err)) throw err;
       console.warn(
-        `[llm] model ${currentModel} unavailable (${err instanceof Error ? err.message : String(err)}). ` +
-        `Retrying with ${models[i + 1]}`,
+        `[llm] ${stepLabel(step)} failed (${err instanceof Error ? err.message : String(err)}); trying ${stepLabel(steps[i + 1]!)}`,
       );
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Gemini request failed");
+  throw lastError instanceof Error ? lastError : new Error("LLM request failed");
 }
 
 export async function expandQuestionToGraph(
@@ -280,23 +368,29 @@ function getAncestry(
   return ancestors;
 }
 
-const DELTA_HINT = `Return ONLY valid JSON (no markdown fences):
+function deltaExpansionHint(sparsePapers: boolean): string {
+  const overlapRule = sparsePapers
+    ? "Paper context is sparse or missing usable abstracts: still return 3–5 concrete keyword nodes grounded in the SELECTED node labels, ancestry, and the user's original question. Use abstracts when they exist; you do NOT need a concept to appear in 2+ abstracts."
+    : "Analyze the paper abstracts and identify RECURRING / OVERLAPPING concepts that appear across MULTIPLE papers. Prefer concepts that appear in 2+ abstracts when possible.";
+
+  return `Return ONLY valid JSON (no markdown fences):
 {
   "new_nodes": [
     { "id": "unique_id", "kind": "keyword", "label": "...", "summary": "one sentence" }
   ],
   "new_edges": [
-    { "id": "e_unique", "source": "existing_or_new_id", "target": "existing_or_new_id", "kind": "expands_to"|"prerequisite_for" }
+    { "id": "e_unique", "source": "selected_node_id", "target": "new_keyword_id", "kind": "expands_to" }
   ]
 }
 Rules:
-- You are given RESEARCH PAPERS (with abstracts) retrieved from OpenAlex for the selected node context.
-- Analyze the paper abstracts and identify RECURRING / OVERLAPPING concepts that appear across MULTIPLE papers.
-- Return at most 5 keyword nodes — only concepts that are shared or recurring across the papers. Quality over quantity.
+- ${overlapRule}
+- Return at least 2 and at most 5 keyword nodes (never return an empty new_nodes array).
 - Each keyword must be a specific research-level concept (e.g., "gradient compression", "non-IID data"), NOT generic terms like "computer science", "AI", "methods".
-- The summary should mention which papers (by short title) share this concept.
-- Use edges to attach new_nodes to the provided selected node ids (as sources). Do not repeat existing ids.
+- Summaries should cite paper titles when abstracts exist; otherwise tie the keyword to the selected labels.
+- new_edges: source MUST be one of the selected node ids from the JSON payload below; target MUST be an id from new_nodes. Prefer kind "expands_to" (parent selected → child keyword).
+- Every new_nodes id must be new and MUST NOT appear in existingNodeIds from the payload.
 - Use ASCII snake_case ids derived from the keyword label.`;
+}
 
 function parseDelta(raw: string): { new_nodes: GraphNode[]; new_edges: GraphEdge[] } {
   const data = JSON.parse(stripFences(raw)) as {
@@ -379,11 +473,17 @@ export async function expandFromSelection(
   });
   const userContent = `${payload}
 
-RESEARCH PAPERS (10 top-cited articles from OpenAlex for the selected keywords):
+RESEARCH PAPERS (top-cited articles from OpenAlex for the selected keywords):
 
 ${paperSection || "(no papers found)"}
 
-From the paper abstracts above, find RECURRING research concepts that appear across multiple papers. Return at most 5 keywords that represent the most important overlapping themes specific to "${question}" in the context of the selected nodes.`;
+Produce keywords that help the user explore "${question}" from the selected nodes.`;
+
+  const abstractsUsable = papers.filter((p) => (p.abstract?.trim().length ?? 0) > 80).length;
+  const sparsePapers = papers.length === 0 || abstractsUsable < 2;
+  const intro = sparsePapers
+    ? "You expand a knowledge graph from selected nodes. When OpenAlex returns few or shallow abstracts, still propose specific research keywords—do not return an empty graph fragment. "
+    : "You analyze research papers to discover OVERLAPPING, RECURRING keywords across multiple papers. ";
 
   const text = await generateTextWithFallback(apiKey, model, {
     contents: [
@@ -391,12 +491,7 @@ From the paper abstracts above, find RECURRING research concepts that appear acr
         role: "user",
         parts: [
           {
-            text:
-              "You analyze research papers to discover OVERLAPPING, RECURRING keywords across multiple papers. " +
-              "Only extract concepts that appear in 2+ papers' abstracts — this ensures the keywords represent established research directions, not one-off topics. " +
-              DELTA_HINT +
-              "\n\n" +
-              userContent,
+            text: intro + deltaExpansionHint(sparsePapers) + "\n\n" + userContent,
           },
         ],
       },
@@ -407,7 +502,31 @@ From the paper abstracts above, find RECURRING research concepts that appear acr
     },
   });
   const delta = parseDelta(text);
-  return mergeDelta(base, delta);
+  if (delta.new_nodes.length > 0) {
+    return mergeDelta(base, delta);
+  }
+
+  if (apiKey) {
+    console.warn(
+      "[llm] expandFromSelection: empty new_nodes (sparsePapers=%s paperCount=%s); applying keyword stubs",
+      sparsePapers,
+      papers.length,
+    );
+  }
+  const stamp = Date.now();
+  const extra: GraphNode[] = selected.map((s, i) => ({
+    id: `expand_fb_${stamp}_${i}_${s.id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+    kind: "keyword" as const,
+    label: `Explore: ${s.label}`.slice(0, 80),
+    summary: "Auto-added because the model returned no nodes — try expanding again or adjust selection.",
+  }));
+  const stubEdges: GraphEdge[] = selected.map((s, i) => ({
+    id: `expand_fb_e_${stamp}_${i}`,
+    source: s.id,
+    target: extra[i]!.id,
+    kind: "expands_to" as const,
+  }));
+  return mergeDelta(base, { new_nodes: extra, new_edges: stubEdges });
 }
 
 /* ── Deep answer ── */
