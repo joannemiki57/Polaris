@@ -565,7 +565,7 @@ npm run hooks:install
 npm run session:changelog -- 2026-04-12 "feature 1" "feature 2"
 ```
 
-- `sessions/CHANGELOG.md` follows a Keep a Changelog-style structure (date headings + short bullet entries).
+- `sessions/CHANGELOG.md` uses **[Unreleased] session groups**: each `### YYYY-MM-DD — Topic` block states the date once; bullets stay under that theme. `npm run session:changelog` appends dated lines after `<!-- changelog-append -->` (fold them into a group when tidying).
 - The hook script also appends the same brief update to `agent.md` / `Claude.md` / `VS Code.md` / `cursor.md` when those files exist.
 - Current pre-commit hook blocks code commits if `sessions/CHANGELOG.md` was not updated.
 - Local-only files are ignored from git history: `.githooks/`, `scripts/session-changelog-hook.sh`, `.cursor/mcp.json`, and `Cursor Hack/.obsidian/` metadata.
