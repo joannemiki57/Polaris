@@ -8,6 +8,10 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 
 ### Added
 
+- 2026-04-13: Added in-canvas animated multi-select feedback for nodes (halo ring + core pulse) so Shift-selected nodes are visibly active in the graph itself.
+- 2026-04-13: Added reduced-motion fallback for selected-node glow animations (`prefers-reduced-motion`) to keep interaction feedback accessible.
+- 2026-04-13: Added a Selection-panel "Deselect all" button (right side of the Selection header) for one-click clearing of current node selections.
+- 2026-04-13: Added side-by-side multi-select expansion actions: `Expand Selected` (combined context) and `Expand Individual` (per-node expansion sequence).
 - 2026-04-12: Added constellation shimmer loading animation that plays while the graph is generating — central star expands outward to children and grandchildren with golden glow and twinkling effects.
 - 2026-04-12: Graph now smoothly centers (fitView) after loading completes instead of appearing off to the side or in a corner.
 - 2026-04-12: Loading animation fades out smoothly when the graph is ready, instead of disappearing abruptly.
@@ -31,6 +35,12 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 
 ### Changed
 
+- 2026-04-13: Selected-node glow timing is now phase-synchronized across all selected nodes; newly selected nodes join the current pulse cycle instead of starting an independent cycle.
+- 2026-04-13: Multi-select glow now uses a single shared pulse offset per selection update, so all selected nodes stay in one unified animation phase rather than per-node timing instances.
+- 2026-04-13: Multi-select combined expansion now runs as a single merged request for selected nodes instead of paper-only per-node loops, and shows guidance that relevance may drop when 4+ nodes are selected.
+- 2026-04-13: Replaced circular selected-node pulse/ring animation with a stronger static glow treatment (glyph scale + brighter halo + label glow) for clearer multi-select visibility.
+- 2026-04-13: LLM pipeline now auto-retries with fallback Gemini models when the primary model returns transient capacity errors (e.g., 503/high-demand), reducing user-visible failures.
+- 2026-04-13: Workspace tabs now isolate runtime loading/status containers, so generating a diagram in one tab no longer shows the loader overlay or operation state in other tabs.
 - 2026-04-12: PNG export now defaults to Full graph and renders all nodes into one image instead of only the current viewport.
 - 2026-04-12: Refined Recent sessions delete UI to remove extra boxed controls (transparent in-card X overlay) and tightened row spacing.
 - 2026-04-12: Updated the Recent sessions delete toggle to the standard trash can emoji (🗑️) for clearer deletion affordance.

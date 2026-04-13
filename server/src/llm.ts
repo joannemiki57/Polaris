@@ -89,6 +89,67 @@ function getGemini(apiKey: string, model: string) {
   return genAI.getGenerativeModel({ model });
 }
 
+type GenerateContentInput = Parameters<ReturnType<typeof getGemini>["generateContent"]>[0];
+
+const DEFAULT_FALLBACK_MODELS = ["gemini-2.5-pro"];
+
+function getFallbackModels(primaryModel: string): string[] {
+  const configured = (process.env.GEMINI_FALLBACK_MODELS ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return [...new Set([...configured, ...DEFAULT_FALLBACK_MODELS])].filter((m) => m !== primaryModel);
+}
+
+function getErrorStatus(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  if (!("status" in err)) return undefined;
+  const value = (err as { status?: unknown }).status;
+  return typeof value === "number" ? value : undefined;
+}
+
+function isCapacityOrTransientError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  if (status === 503 || status === 429) return true;
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /(high demand|service unavailable|temporar|overload|resource_exhausted|rate limit|503|429)/i.test(message);
+}
+
+async function generateTextWithFallback(
+  apiKey: string,
+  model: string,
+  request: GenerateContentInput,
+): Promise<string> {
+  const models = [model, ...getFallbackModels(model)];
+  let lastError: unknown;
+
+  for (let i = 0; i < models.length; i++) {
+    const currentModel = models[i]!;
+    try {
+      const gemini = getGemini(apiKey, currentModel);
+      const result = await gemini.generateContent(request);
+      const text = result.response.text();
+      if (!text) throw new Error(`Empty Gemini response from ${currentModel}`);
+      if (i > 0) {
+        console.warn(`[llm] fallback model used: ${currentModel} (primary: ${model})`);
+      }
+      return text;
+    } catch (err) {
+      lastError = err;
+      const hasNextModel = i < models.length - 1;
+      if (!hasNextModel || !isCapacityOrTransientError(err)) {
+        throw err;
+      }
+      console.warn(
+        `[llm] model ${currentModel} unavailable (${err instanceof Error ? err.message : String(err)}). ` +
+        `Retrying with ${models[i + 1]}`,
+      );
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Gemini request failed");
+}
+
 export async function expandQuestionToGraph(
   apiKey: string | undefined,
   question: string,
@@ -96,8 +157,7 @@ export async function expandQuestionToGraph(
 ): Promise<MindGraph> {
   if (!apiKey) return mockExpand(question);
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -117,8 +177,6 @@ export async function expandQuestionToGraph(
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   return parseMindGraph(text);
 }
 
@@ -179,8 +237,7 @@ ${articleSection || "(none found)"}
 
 From the topics and abstracts above, extract specific research-level keywords and organize them into a structured knowledge tree. Avoid generic terms like "computer science", "AI", "engineering" — focus on concepts that would inspire a researcher exploring "${question}".`;
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -200,8 +257,6 @@ From the topics and abstracts above, extract specific research-level keywords an
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   return parseMindGraph(text);
 }
 
@@ -317,7 +372,6 @@ export async function expandFromSelection(
     })
     .join("\n\n");
 
-  const gemini = getGemini(apiKey, model);
   const payload = JSON.stringify({
     originalQuestion: question,
     selected: selectedWithAncestry,
@@ -331,7 +385,7 @@ ${paperSection || "(no papers found)"}
 
 From the paper abstracts above, find RECURRING research concepts that appear across multiple papers. Return at most 5 keywords that represent the most important overlapping themes specific to "${question}" in the context of the selected nodes.`;
 
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -352,8 +406,6 @@ From the paper abstracts above, find RECURRING research concepts that appear acr
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   const delta = parseDelta(text);
   return mergeDelta(base, delta);
 }
@@ -378,8 +430,7 @@ export async function deepAnswer(
     );
   }
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -388,7 +439,7 @@ export async function deepAnswer(
     ],
     generationConfig: { temperature: 0.5 },
   });
-  return result.response.text() ?? "";
+  return text;
 }
 
 /* ── Deep Answer: chat grounded in papers ── */
@@ -447,7 +498,6 @@ export async function chatWithPapers(
     );
   }
 
-  const gemini = getGemini(apiKey, model);
   const contents = [
     {
       role: "user" as const,
@@ -467,11 +517,11 @@ export async function chatWithPapers(
     },
   ];
 
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents,
     generationConfig: { temperature: 0.4 },
   });
-  return result.response.text() ?? "";
+  return text;
 }
 
 /* ── Paper section-keyword extraction ── */
@@ -517,8 +567,7 @@ ${abs}
 
 Extract the specific section-level research concepts this paper covers. What would the section headings (2.1, 2.2, 3.1, etc.) of this paper be about?`;
 
-  const gemini = getGemini(apiKey, model);
-  const result = await gemini.generateContent({
+  const text = await generateTextWithFallback(apiKey, model, {
     contents: [
       {
         role: "user",
@@ -538,8 +587,6 @@ Extract the specific section-level research concepts this paper covers. What wou
       responseMimeType: "application/json",
     },
   });
-  const text = result.response.text();
-  if (!text) throw new Error("Empty Gemini response");
   const data = JSON.parse(stripFences(text)) as {
     keywords?: { id: string; label: string; summary: string }[];
   };

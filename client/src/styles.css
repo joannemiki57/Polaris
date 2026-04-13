@@ -226,6 +226,12 @@ a {
   gap: 8px;
 }
 
+.selection-action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .sidebar button {
   padding: 8px 12px;
   border-radius: 8px;
@@ -262,6 +268,24 @@ a {
 
 .panel-head h3 {
   margin: 0;
+}
+
+.selection-clear-btn {
+  width: auto !important;
+  min-width: 92px;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid #2b2b2f !important;
+  background: #161619 !important;
+  color: #a5b4c7 !important;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.selection-clear-btn:hover:not(:disabled) {
+  color: #ffd369 !important;
+  border-color: rgba(255, 211, 105, 0.45) !important;
+  background: #1d1d21 !important;
 }
 
 .session-settings {
@@ -648,16 +672,41 @@ a {
 /* ── Mind Graph Nodes (Figma style) ── */
 
 .mn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
   text-align: center;
-  transition: filter 0.2s;
+  transition: filter 0.2s ease, transform 0.16s ease;
 }
 
 .mn-selected {
-  filter: drop-shadow(0 0 10px rgba(255, 211, 105, 0.6));
+  filter:
+    drop-shadow(0 0 14px rgba(255, 211, 105, 0.82))
+    drop-shadow(0 0 26px rgba(255, 211, 105, 0.45));
+  transform: translateY(-1px);
+}
+
+.mn-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.mn-selected .mn-glyph {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 18px rgba(255, 211, 105, 0.7));
+}
+
+.mn-selected .mn-label {
+  color: #ffe291;
+  text-shadow: 0 0 10px rgba(255, 211, 105, 0.55);
+}
+
+.mn-selected .mn-dot {
+  box-shadow: 0 0 14px rgba(255, 211, 105, 0.78);
 }
 
 .mn:hover {

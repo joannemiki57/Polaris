@@ -8,6 +8,7 @@ export type MindNodeData = {
   summary?: string;
   meta: GraphNode;
   animDelay?: number;
+  isMultiSelected?: boolean;
 };
 
 const NODE_ICONS: Record<string, string> = {
@@ -15,8 +16,9 @@ const NODE_ICONS: Record<string, string> = {
   keyword: "/assets/node-keyword-1.svg",
 };
 
-export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
+export function MindNode({ data }: NodeProps<MindNodeData>) {
   const { kind, label, meta } = data;
+  const isSelected = !!data.isMultiSelected;
   const paperUrl = kind === "paper"
     ? (meta.doi ? `https://doi.org/${meta.doi.replace(/^https?:\/\/doi\.org\//, "")}` : meta.url)
     : undefined;
@@ -37,7 +39,7 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
 
   return (
     <div
-      className={`mn mn-shimmer ${selected ? "mn-selected" : ""} ${paperUrl ? "mn-clickable" : ""} mn-${kind}`}
+      className={`mn mn-shimmer ${isSelected ? "mn-selected" : ""} ${paperUrl ? "mn-clickable" : ""} mn-${kind}`}
       onDoubleClick={handleClick}
       style={{
         animation: "mn-fade-up 0.28s cubic-bezier(0.22,1,0.36,1) forwards",
@@ -49,19 +51,21 @@ export function MindNode({ data, selected }: NodeProps<MindNodeData>) {
       <Handle type="target" position={Position.Right} className="mn-handle" id="t-right" />
 
       {/* Icon / dot */}
-      {icon ? (
-        <img
-          className={`mn-icon ${isTopic ? "mn-icon-lg" : ""}`}
-          src={icon}
-          alt=""
-        />
-      ) : isPaper ? (
-        <div className="mn-dot mn-dot-paper" />
-      ) : isSubtask ? (
-        <div className="mn-dot mn-dot-subtask" />
-      ) : (
-        <div className="mn-dot mn-dot-default" />
-      )}
+      <div className="mn-glyph">
+        {icon ? (
+          <img
+            className={`mn-icon ${isTopic ? "mn-icon-lg" : ""}`}
+            src={icon}
+            alt=""
+          />
+        ) : isPaper ? (
+          <div className="mn-dot mn-dot-paper" />
+        ) : isSubtask ? (
+          <div className="mn-dot mn-dot-subtask" />
+        ) : (
+          <div className="mn-dot mn-dot-default" />
+        )}
+      </div>
 
       {/* Label */}
       <div className={`mn-label mn-label-${kind}`}>
