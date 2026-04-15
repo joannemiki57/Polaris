@@ -1,10 +1,19 @@
 import type { MindGraph } from "./graphTypes";
 
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "Failed to fetch" || msg.includes("NetworkError")) {
+      throw new Error("Cannot reach API — is the server running (port 8787)? Try `npm install` at the repo root, then `bash start.sh`.");
+    }
+    throw new Error(msg);
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? res.statusText);
