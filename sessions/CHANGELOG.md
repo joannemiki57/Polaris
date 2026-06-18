@@ -52,6 +52,11 @@ The format is based on Keep a Changelog, adapted for date-based session updates.
 
 - 2026-04-12: Removed the inline Deep Panel UI from the main workspace for a cleaner, single-path Deep Answer flow.
 
+
+<!-- changelog-append -->
+- 2026-04-15: Client API errors hint when server is down; workspace question sync and expand-selection context fallback
+- 2026-04-15: Restored constellation loader, layout lerp, multi-select sync, and edge settings in App
+
 ## [2026-04-12]
 
 ### Added
